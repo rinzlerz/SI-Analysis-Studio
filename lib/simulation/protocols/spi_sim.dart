@@ -24,6 +24,7 @@ import '../impedance/impedance.dart';
 import '../metrics/classify.dart';
 import '../metrics/compliance.dart';
 import '../metrics/waveform_metrics.dart';
+import '../model/bus_lengths.dart';
 import '../model/config.dart';
 import '../model/result.dart';
 import '../reflection/reflection.dart';
@@ -95,7 +96,20 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   final rdName = isQ ? 'IO read' : 'MISO';
   final csName = isQ ? 'CS#' : 'CS';
   final tgtName = isQ ? 'flash' : 'peripheral';
-  final dataLen = isQ ? cfg.pcb.traceLength + p.dataClockMismatch : cfg.pcb.traceLength;
+  // Routed lengths (per signal when enabled; otherwise trace length + mismatch).
+  final perSig = perSignalOn(cfg);
+  final bl = groupLengths(cfg).first;
+  final clkLen = bl.clock;
+  final csLen = bl.lengths[csName]!;
+  final wrSig = isQ ? bl.longest : bl.group.data[0];
+  final wrMinSig = isQ ? bl.shortest : wrSig;
+  final rdSig = isQ ? bl.longest : bl.group.data[1];
+  final rdMinSig = isQ ? bl.shortest : rdSig;
+  final wrLen = bl.of(wrSig), wrLenMin = bl.of(wrMinSig);
+  final rdLen = bl.of(rdSig), rdLenMin = bl.of(rdMinSig);
+  final dqsLen = bl.lengths['DQS'] ?? clkLen;
+  final dataLen = wrLen;
+  final ioSpread = isQ && wrLen - wrLenMin > 1e-9;
   final thr = cfg.thresholds;
   final ibis = p.useIbis ? p.ibisDriver : null;
   final ibisRx = p.useIbis ? p.ibisReceiver : null;
@@ -126,7 +140,8 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
     differential: false,
     minEdge: math.min(riseT, fallT),
     durationFor: (t) => tCsEnd + tclk + 4 * t + p.slaveTco + p.readSampleDelay + 2 * math.max(riseT, fallT),
-    extraLength: dataLen - cfg.pcb.traceLength,
+    baseLength: clkLen,
+    otherLengths: [csLen, wrLen, wrLenMin, rdLen, rdLenMin, dqsLen],
   );
   final dt = link.dt;
   final n = link.samples;
@@ -135,6 +150,9 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   final z0 = line.z0;
   final delay = line.delay;
   final dataDelay = link.withLength(dataLen).delay;
+  final rdDelay = link.withLength(rdLen).delay;
+  final dqsDelay = link.withLength(dqsLen).delay;
+  final csDelay = link.withLength(csLen).delay;
   final ends0 = spiEnds(p);
   // With IBIS, the linear source/load only feed the analytical metrics; the
   // driver resistance is the small-signal pull-up/pull-down average.
@@ -158,7 +176,7 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
 
   LineSolution solve(Float64List vs, List<Transition> tr, double initial, {double? length}) => solveLeg(
         link: link,
-        length: length ?? cfg.pcb.traceLength,
+        length: length ?? clkLen,
         vs: vs,
         source: ends.source,
         load: ends.load,
@@ -209,8 +227,13 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   final csVs = stim(vdd, csTr);
   final mosiVs = stim(0, mosiTr);
   final sclk = _Line('sclk', clkName, sclkVs, solve(sclkVs, sclkTr, idle), sclkTr, idle, delay);
-  final cs = _Line('cs', csName, csVs, solve(csVs, csTr, vdd), csTr, vdd, delay);
-  final mosi = _Line('mosi', wrName, mosiVs, solve(mosiVs, mosiTr, 0, length: dataLen), mosiTr, 0, dataDelay);
+  final cs = _Line('cs', csName, csVs, solve(csVs, csTr, vdd, length: csLen), csTr, vdd, csDelay);
+  final mosi = _Line('mosi', wrName, mosiVs, solve(mosiVs, mosiTr, 0, length: wrLen), mosiTr, 0, dataDelay);
+  // Shortest IO line (QSPI with per-signal lengths): worst case for hold.
+  final mosiMin = ioSpread
+      ? _Line('mosi_min', '$wrName (${wrMinSig.name})', mosiVs, solve(mosiVs, mosiTr, 0, length: wrLenMin), mosiTr, 0,
+          link.withLength(wrLenMin).delay)
+      : null;
 
   // DC levels at the receiver (with IBIS: from the simulated DC state of the
   // CS line, idle high, and MOSI, idle low).
@@ -236,8 +259,8 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   final leadArr = List<double>.generate(nc, (k) => arrival(sclk.sol.vFar, lead(k), leadRising));
   final trailArr = List<double>.generate(nc, (k) => arrival(sclk.sol.vFar, trail(k), !leadRising));
   double edgeArr(int k) => k.isEven ? leadArr[k ~/ 2] : trailArr[k ~/ 2];
-  final csArr = firstCrossing(cs.sol.vFar, dt, vMid, false, tCs - wf, tCs + delay + half) ??
-      (tCs + delay);
+  final csArr = firstCrossing(cs.sol.vFar, dt, vMid, false, tCs - wf, tCs + csDelay + half) ??
+      (tCs + csDelay);
 
   // ---- Peripheral-driven MISO ---------------------------------------------
   final misoTr = <Transition>[];
@@ -250,7 +273,11 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
     last = misoBits[k];
   }
   final misoVs = stim(0, misoTr);
-  final miso = _Line('miso', rdName, misoVs, solve(misoVs, misoTr, 0, length: dataLen), misoTr, 0, dataDelay);
+  final miso = _Line('miso', rdName, misoVs, solve(misoVs, misoTr, 0, length: rdLen), misoTr, 0, rdDelay);
+  final misoMin = ioSpread
+      ? _Line('miso_min', '$rdName (${rdMinSig.name})', misoVs, solve(misoVs, misoTr, 0, length: rdLenMin), misoTr, 0,
+          link.withLength(rdLenMin).delay)
+      : null;
 
   // ---- Timing --------------------------------------------------------------
   double validAfter(Float64List v, int bit, double ts) {
@@ -282,11 +309,24 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   List<double> masterSampleAt(double d) => List<double>.generate(
       nb,
       (k) => dqs
-          ? misoLaunch[k] + delay + tBit / 2 + d
+          ? misoLaunch[k] + dqsDelay + tBit / 2 + d
           : (dtr ? edgeT(k) + half : (cpha ? trail(k) : lead(k))) + d);
   final masterSample = masterSampleAt(p.readSampleDelay);
-  final mosiT = timing(mosi.sol.vFar, bits, slaveSample);
-  final misoT = timing(miso.sol.vFar, misoBits, masterSample);
+  // Worst case over the longest and shortest IO line; remember which limits.
+  ({double setup, double hold, String suBy, String hoBy}) both(_Line a, _Line? b, String an, String bn, List<int> bitsX, List<double> ts) {
+    final ta = timing(a.sol.vFar, bitsX, ts);
+    if (b == null) return (setup: ta.setup, hold: ta.hold, suBy: an, hoBy: an);
+    final tb = timing(b.sol.vFar, bitsX, ts);
+    return (
+      setup: math.min(ta.setup, tb.setup),
+      hold: math.min(ta.hold, tb.hold),
+      suBy: ta.setup <= tb.setup ? an : bn,
+      hoBy: ta.hold <= tb.hold ? an : bn,
+    );
+  }
+
+  final mosiT = both(mosi, mosiMin, wrSig.name, wrMinSig.name, bits, slaveSample);
+  final misoT = both(miso, misoMin, rdSig.name, rdMinSig.name, misoBits, masterSample);
   // QSPI: find the read capture delay that centres the data window.
   double? bestDelay;
   var bestMargin = -double.infinity;
@@ -296,7 +336,7 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
     for (var i = 0; i <= steps; i++) {
       final d = (dqs ? -tBit / 2 : 0) + span * i / steps;
       if (d < 0 && !dqs) continue;
-      final t = timing(miso.sol.vFar, misoBits, masterSampleAt(d));
+      final t = both(miso, misoMin, rdSig.name, rdMinSig.name, misoBits, masterSampleAt(d));
       final margin = math.min(t.setup, t.hold.isFinite ? t.hold : t.setup);
       if (margin > bestMargin) {
         bestMargin = margin;
@@ -319,7 +359,7 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   final sMosi = stats(mosi);
   final sMiso = stats(miso);
   final sCs = stats(cs);
-  final all = [sSclk, sMosi, sMiso, sCs];
+  final all = [sSclk, sMosi, sMiso, sCs, if (mosiMin != null) stats(mosiMin), if (misoMin != null) stats(misoMin)];
   final swing = vHigh - vLow;
   final worstOs = all.map((s) => s.overshoot).reduce(math.max);
   final worstUs = all.map((s) => s.undershoot).reduce(math.max);
@@ -329,6 +369,8 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
   final rbData = [sMosi, sMiso, sCs].map(rb).reduce(math.min);
 
   // ---- Metrics -------------------------------------------------------------
+  final worstSkew = link.withLength(clkLen + bl.worstToClock.diff).delay - delay;
+  final spreadSkew = dataDelay - link.withLength(wrLenMin).delay;
   final imp = link.impedance;
   final width = solveWidthForTarget(link.geometry, p.targetZ0);
   final zDev = (imp.z0 - p.targetZ0) / p.targetZ0 * 100;
@@ -549,15 +591,27 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
             ? 'Centres the read window: worst setup/hold slack ${secs(bestMargin)} (current delay ${secs(p.readSampleDelay)})'
             : 'The read data window is smaller than setup + hold; no sample delay can fix it',
       ),
-    if (isQ && p.dataClockMismatch != 0)
+    if (isQ && bl.worstToClock.diff.abs() > 1e-9)
       Metric(
         id: 'dcskew',
         label: 'IO-to-CLK routing skew',
-        value: dataDelay - delay,
+        value: worstSkew,
         unit: 's',
-        status: classifyHigherWorse((dataDelay - delay).abs() / tBit * 100, thr.skewGoodPctUi * 2, thr.skewWarnPctUi * 2),
+        status: classifyHigherWorse(worstSkew.abs() / tBit * 100, thr.skewGoodPctUi * 2, thr.skewWarnPctUi * 2),
         level: ModelLevel.analytical,
-        note: '${mm(p.dataClockMismatch)} length difference; ${pct((dataDelay - delay).abs() / tBit * 100)} of the bit time',
+        note: '${perSig ? '${bl.worstToClock.signal.name} vs CLK: ' : ''}${mm(bl.worstToClock.diff)} length difference; '
+            '${pct(worstSkew.abs() / tBit * 100)} of the bit time',
+      ),
+    if (ioSpread)
+      Metric(
+        id: 'io_spread',
+        label: 'IO line length spread',
+        value: spreadSkew,
+        unit: 's',
+        status: classifyHigherWorse(spreadSkew / tBit * 100, thr.skewGoodPctUi * 2, thr.skewWarnPctUi * 2),
+        level: ModelLevel.analytical,
+        note: '${wrMinSig.name} ${mm(wrLenMin)} to ${wrSig.name} ${mm(wrLen)} (${mm(wrLen - wrLenMin)}); '
+            '${pct(spreadSkew / tBit * 100)} of the bit time',
       ),
   ];
 
@@ -659,11 +713,25 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
     }
   }
 
+  String limiting(({double setup, double hold, String suBy, String hoBy}) t) {
+    if (!ioSpread) return '';
+    final bad = <String>[
+      if (t.setup < thr.timingWarnPctPeriod / 100 * tclk) 'setup limited by ${t.suBy} (longest)',
+      if (t.hold.isFinite && t.hold < thr.timingWarnPctPeriod / 100 * tclk) 'hold limited by ${t.hoBy} (shortest)',
+    ];
+    return bad.isEmpty ? '' : '. Per-signal lengths: ${bad.join(', ')}';
+  }
+
   timingFinding(rdName, misoT.setup, misoT.hold,
-      dqs
-          ? 'Read data is captured with the flash DQS strobe; IO vs CLK/DQS routing skew ${secs(dataDelay - delay)}'
-          : '$rdName arrives after $clkName flight (${secs(delay)}) + tCO (${secs(p.slaveTco)}) + data flight (${secs(dataDelay)})');
-  timingFinding(wrName, mosiT.setup, mosiT.hold, '$wrName and $clkName travel together to the $tgtName');
+      (dqs
+              ? 'Read data is captured with the flash DQS strobe; IO vs DQS routing skew ${secs(rdDelay - dqsDelay)}'
+              : '$rdName arrives after $clkName flight (${secs(delay)}) + tCO (${secs(p.slaveTco)}) + data flight (${secs(rdDelay)})') +
+          limiting(misoT));
+  timingFinding(wrName, mosiT.setup, mosiT.hold,
+      (perSig && !isQ
+              ? '$wrName (${mm(wrLen)}) and $clkName (${mm(clkLen)}) travel to the $tgtName'
+              : '$wrName and $clkName travel together to the $tgtName') +
+          limiting(mosiT));
   final readBad = misoT.setup < 0 || (misoT.hold.isFinite && misoT.hold < 0);
   if (isQ && bestDelay != null && readBad && bestMargin >= 0) {
     // The window exists - the controller just samples it in the wrong place.
@@ -674,7 +742,7 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
       reason: 'With a ${secs(p.readSampleDelay)} capture delay the controller samples read data '
           '${misoT.setup < 0 ? 'before it is valid' : 'after it has changed'} (setup ${secs(misoT.setup)}, hold '
           '${misoT.hold.isFinite ? secs(misoT.hold) : 'n/a'}). Read data returns after the clock flight '
-          '(${secs(delay)}) + flash tV (${secs(p.slaveTco)}) + data flight (${secs(dataDelay)}).',
+          '(${secs(delay)}) + flash tV (${secs(p.slaveTco)}) + data flight (${secs(rdDelay)}).',
       recommendation: 'Set the controller read sample / capture delay to ≈ ${secs(bestDelay)}'
           '${dqs ? ' (DQS delay adjust)' : ' (e.g. "sample delay" or "read capture delay" register)'}; that leaves '
           '${secs(bestMargin)} worst-case setup/hold slack.',
@@ -795,16 +863,23 @@ SimulationResult simulateSpi(AnalysisConfig cfg) {
     else
       'Level 3 IBIS receiver "${ibisRx.name}": clamp diodes + C_comp ${eng(ibisRx.cCompOf(corner), 'F')}; '
           'VIH ${volts(vih)}, VIL ${volts(vil)}.',
-    if (!isQ) 'All four SPI signals share the same routing length, layer and termination.',
+    if (!isQ && !perSig) 'All four SPI signals share the same routing length, layer and termination.',
+    if (perSig)
+      'Per-signal lengths: ${[for (final s in bl.group.all) '${s.name} ${mm(bl.of(s))}'].join(', ')}. '
+          'Same layer and termination for all lines.',
+    if (ioSpread)
+      'Timing is checked on the longest (${wrSig.name}) and shortest (${wrMinSig.name}) IO line; the worst of the two is reported.',
     if (!isQ) 'MISO pattern is the inverse of the MOSI pattern; MISO driven low before the first bit.',
     if (isQ)
-      'IO0 represents all ${p.ioWidth} IO lines (same routing, ${mm(dataLen)}); CLK and CS# ${mm(cfg.pcb.traceLength)}. '
+      '${perSig ? 'IO waveforms show ${wrSig.name} (${mm(dataLen)}). ' : 'IO0 represents all ${p.ioWidth} IO lines (same routing, ${mm(dataLen)}); CLK and CS# ${mm(cfg.pcb.traceLength)}. '}'
           '${dtr ? 'DTR: one bit per clock edge, writes centre-aligned (data a quarter clock before each edge).' : 'SDR transfers.'} '
           'Read data is the inverse of the write pattern, driven by the flash tV = ${secs(p.slaveTco)} after each launching clock edge.',
     if (isQ && p.seriesR > 0 && p.termination.hasSeries)
       'Series resistor modelled at each driver output (flash outputs included); a single resistor placed near the '
           'controller damps the read path less than modelled.',
-    if (dqs) 'DQS routed with CLK and centred on the read data by the controller (ideal 90° delay).',
+    if (dqs) perSig
+        ? 'DQS (${mm(dqsLen)}) centred on the read data by the controller (ideal 90° delay).'
+        : 'DQS routed with CLK and centred on the read data by the controller (ideal 90° delay).',
     'Settled levels: low ${volts(vLow)}, high ${volts(vHigh)} at the receiver (DC).',
   ];
   sw.stop();

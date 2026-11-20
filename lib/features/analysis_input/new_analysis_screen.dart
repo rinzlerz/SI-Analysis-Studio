@@ -9,6 +9,7 @@ import '../../simulation/common/format.dart';
 import '../../simulation/engine.dart';
 import '../../simulation/equalization/equalization.dart';
 import '../../simulation/impedance/impedance.dart';
+import '../../simulation/model/bus_lengths.dart';
 import '../../simulation/transmission_line/line_params.dart';
 import '../../simulation/waveform_engine/stimulus.dart';
 import '../../shared/widgets/common.dart';
@@ -514,6 +515,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
           onChanged: (v) => _set(() => p.useDqs = v),
         ),
       FieldRow(children: [
+        if (!p.perSignalLengths)
         EngField(
           key: _k('dcm-${c.settings.lengthUnit.name}'),
           label: 'IO length − CLK length',
@@ -795,6 +797,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
           onChanged: (v) => _set(() => p.rxClockDelay = v),
         ),
       ]),
+      if (!p.perSignalLengths)
       EngField(
         key: _k('rgclk-${c.settings.lengthUnit.name}'),
         label: 'Clock length − data length',
@@ -1293,6 +1296,81 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
   }
 
   // ---------------------------------------------------------------- C
+  /// Optional per-signal routed lengths (SPI, QSPI/OSPI, RGMII).
+  Widget _signalLengths() {
+    final cfg = c.draft;
+    final lu = c.settings.lengthUnit.spec;
+    final on = perSignalOn(cfg);
+    void toggle(bool v) => _set(() {
+          setPerSignal(cfg, v);
+          if (!v) _invalid.removeWhere((k) => k.startsWith('sl-'));
+        });
+    final children = <Widget>[
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Per-signal lengths'),
+        subtitle: Text(
+            on
+                ? 'Each line is timed with its own length; the longest and shortest data line set the worst case'
+                : 'Enter the routed length of every ${cfg.protocol == Protocol.rgmii ? 'TX / RX' : 'bus'} line instead of one length',
+            style: const TextStyle(fontSize: 12, color: AppColors.textDim)),
+        value: on,
+        onChanged: toggle,
+      ),
+    ];
+    if (on) {
+      for (final g in groupLengths(cfg)) {
+        final sigs = g.group.all;
+        children.add(Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 2),
+          child: Row(children: [
+            Text(g.group.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const Spacer(),
+            if (g.group.data.length > 1)
+              Text(
+                'data spread ${formatInput(lu.toDisplay(g.spread), maxDecimals: 2)} ${lu.label}'
+                '${g.spread > 1e-9 ? ' (${g.shortest.name}–${g.longest.name})' : ''}',
+                style: TextStyle(fontSize: 12, color: g.spread > 2.5e-3 ? AppColors.warning : AppColors.textDim),
+              ),
+          ]),
+        ));
+        for (var i = 0; i < sigs.length; i += 3) {
+          children.add(FieldRow(children: [
+            for (var j = i; j < i + 3; j++)
+              if (j < sigs.length)
+                EngField(
+                  key: _k('sl-${sigs[j].name}-${lu.label}'),
+                  label: sigs[j].name,
+                  value: g.of(sigs[j]),
+                  unit: lu,
+                  min: 0.1e-3,
+                  max: 2,
+                  decimals: 3,
+                  onValidity: _valid('sl-${sigs[j].name}'),
+                  onChanged: (v) => _set(() => setSignalLength(cfg, sigs[j].name, v)),
+                )
+              else
+                const SizedBox.shrink(),
+          ]));
+        }
+      }
+      children.add(Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          icon: const Icon(Icons.restart_alt, size: 18),
+          label: const Text('Reset all to the trace length'),
+          onPressed: () => _set(() {
+            for (final s in busSignals(cfg)) {
+              setSignalLength(cfg, s.name, defaultSignalLength(cfg, s));
+            }
+            c.draftRevision++;
+          }),
+        ),
+      ));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+  }
+
   Widget _pcbSection() {
     final pcb = cfg.pcb;
     final gu = c.settings.geometryUnit.spec;
@@ -1376,7 +1454,9 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
             min: 0.1e-3,
             max: 2,
             decimals: 3,
-            tooltip: 'Routed length from driver pin to receiver pin.',
+            tooltip: perSignalOn(cfg)
+                ? 'Reference length for crosstalk and channel elements. Timing uses the per-signal lengths below.'
+                : 'Routed length from driver pin to receiver pin.',
             onValidity: _valid('len'),
             onChanged: (v) => _set(() => pcb.traceLength = v),
           ),
@@ -1402,6 +1482,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
             itemLabel: (m) => m.label,
             onChanged: (m) => _set(() => pcb.diffModel = m),
           ),
+        if (supportsSignalLengths(cfg.protocol)) _signalLengths(),
         _impedancePreview(),
         const Divider(height: 24),
         if (cfg.protocol.serdes && cfg.serdes.useTouchstone)

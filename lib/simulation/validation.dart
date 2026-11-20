@@ -3,6 +3,7 @@
 library;
 
 import 'impedance/impedance.dart';
+import 'model/bus_lengths.dart';
 import 'model/config.dart';
 import 'waveform_engine/stimulus.dart';
 
@@ -43,6 +44,12 @@ List<ValidationIssue> validateConfig(AnalysisConfig c) {
   if (!(s.df >= 0 && s.df <= 0.1)) err('Df', 'Dissipation factor must be between 0 and 0.1.');
   if (!pos(c.pcb.traceWidth)) err('Trace width', 'Must be > 0.');
   if (!pos(c.pcb.traceLength)) err('Trace length', 'Must be > 0.');
+  if (perSignalOn(c)) {
+    for (final sig in busSignals(c)) {
+      final l = signalLength(c, sig);
+      if (!(l > 0 && l <= 2)) err('${sig.name} length', 'Must be > 0 and <= 2 m.');
+    }
+  }
   if (c.pcb.traceLength > 2) err('Trace length', 'Must be <= 2 m for this model.');
   if (c.protocol.differential) {
     if (!pos(c.pcb.traceSpacing)) err('Trace spacing', 'Must be > 0 for a differential pair.');
@@ -83,7 +90,7 @@ List<ValidationIssue> validateConfig(AnalysisConfig c) {
       err('Fall time', 'Edge (tf/0.8) is longer than $what.');
     }
     if (c.protocol == Protocol.qspi) {
-      if (!(p.dataClockMismatch.abs() < c.pcb.traceLength)) {
+      if (!p.perSignalLengths && !(p.dataClockMismatch.abs() < c.pcb.traceLength)) {
         err('IO-to-CLK mismatch', 'Must be smaller than the trace length.');
       }
       if (!(p.readSampleDelay >= 0 && p.readSampleDelay < 2 / p.clockHz)) {
@@ -139,7 +146,9 @@ List<ValidationIssue> validateConfig(AnalysisConfig c) {
     if (!(p.txClockDelay >= 0 && p.txClockDelay < tBit * 2) || !(p.rxClockDelay >= 0 && p.rxClockDelay < tBit * 2)) {
       err('Clock delay', 'Internal delays must be 0 to two bit times.');
     }
-    if (!(c.pcb.traceLength + p.clockExtraLength > 0)) err('Clock length', 'The clock trace must be longer than 0.');
+    if (!p.perSignalLengths && !(c.pcb.traceLength + p.clockExtraLength > 0)) {
+      err('Clock length', 'The clock trace must be longer than 0.');
+    }
     if (!(p.txSkew >= 0 && p.setupTime >= 0 && p.holdTime >= 0)) err('Timing', 'Skew, setup and hold must be >= 0.');
     if (!(c.sim.numBits >= 4 && c.sim.numBits <= 512)) err('Bits', 'RGMII pattern must be 4-512 bits.');
   } else if (c.protocol == Protocol.usb2) {

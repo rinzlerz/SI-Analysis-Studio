@@ -25,6 +25,7 @@ import '../impedance/impedance.dart';
 import '../metrics/classify.dart';
 import '../metrics/compliance.dart';
 import '../metrics/waveform_metrics.dart';
+import '../model/bus_lengths.dart';
 import '../model/config.dart';
 import '../model/result.dart';
 import '../termination/termination.dart';
@@ -46,7 +47,11 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
   final tBit = ddr ? half : tclk;
   final bits = patternBits(cfg.sim, cfg.sim.numBits);
   final nb = bits.length;
-  final clkLen = cfg.pcb.traceLength + p.clockExtraLength;
+  final perSig = perSignalOn(cfg);
+  final gls = groupLengths(cfg);
+  final txL = gls[0], rxL = gls[1];
+  final clkLen = txL.clock;
+  final dataLen = txL.dataMax;
   final t0 = tclk;
   // Clock edge k (k counts bits for DDR, rising edges otherwise).
   double edge(int k) => t0 + (ddr ? k * half : k * tclk);
@@ -58,7 +63,8 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
     cfg: cfg,
     differential: false,
     minEdge: math.min(p.riseTime, p.fallTime),
-    extraLength: p.clockExtraLength,
+    baseLength: dataLen,
+    otherLengths: [for (final g in gls) ...g.lengths.values],
     durationFor: (t) => tStop + 4 * t + maxDelay + 2 * tclk,
   );
   final dt = link.dt;
@@ -102,8 +108,10 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
   }
   final clkVs = stim(0, clkTr);
   final dataVs = stim(0, dataTr);
-  final clk = solve(clkVs, clkLen);
-  final data = solve(dataVs, cfg.pcb.traceLength);
+  final cache = <double, LineSolution>{};
+  LineSolution solveC(Float64List vs, double len, String kind) => cache.putIfAbsent(len * (kind == 'c' ? 1 : -1), () => solve(vs, len));
+  final clk = solveC(clkVs, clkLen, 'c');
+  final data = solveC(dataVs, dataLen, 'd');
 
   final vHigh = dcLineVoltage(vdd, source, load);
   final vLow = 0.0;
@@ -112,44 +120,80 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
   final vil = 0.3 * vdd;
 
   // Clock arrival (50 %) for each data bit's launching edge.
-  final arr = <double>[];
-  for (var k = 0; k < nb; k++) {
-    final te = edge(k);
-    final rising = ddr ? k.isEven : true;
-    arr.add(firstCrossing(clk.vFar, dt, vMid, rising, te, te + clkDelay + half) ?? te + clkDelay);
+  List<double> arrivals(LineSolution c, double cDelay) {
+    final arr = <double>[];
+    for (var k = 0; k < nb; k++) {
+      final te = edge(k);
+      final rising = ddr ? k.isEven : true;
+      arr.add(firstCrossing(c.vFar, dt, vMid, rising, te, te + cDelay + half) ?? te + cDelay);
+    }
+    return arr;
   }
 
-  ({double setup, double hold}) timing(double clockDelay) {
+  ({double setup, double hold}) timingOn(LineSolution d, List<double> arr, double clockDelay) {
     var su = double.infinity, ho = double.infinity;
     for (var k = 0; k < nb; k++) {
       final ts = arr[k] + clockDelay;
       if (ts >= tEnd) continue;
-      final entry = lastValidEntry(data.vFar, dt, bits[k], vih, vil, ts, lookBack: 2 * tBit);
+      final entry = lastValidEntry(d.vFar, dt, bits[k], vih, vil, ts, lookBack: 2 * tBit);
       if (entry == null) {
         su = math.min(su, -tBit);
         continue;
       }
       su = math.min(su, ts - entry - p.setupTime - p.txSkew);
-      final exit = firstInvalidExit(data.vFar, dt, bits[k], vih, vil, ts, math.min(ts + 2 * tBit, tEnd));
+      final exit = firstInvalidExit(d.vFar, dt, bits[k], vih, vil, ts, math.min(ts + 2 * tBit, tEnd));
       if (exit != null) ho = math.min(ho, exit - ts - p.holdTime - p.txSkew);
     }
     return (setup: su, hold: ho);
   }
 
-  final tx = timing(p.txClockDelay);
-  final rx = timing(p.rxClockDelay);
-  // Clock delay that maximises the worst of setup and hold (swept).
-  var bestDelay = double.nan, bestMargin = -double.infinity;
-  for (var i = 0; i <= 200; i++) {
-    final d = 1.5 * tBit * i / 200;
-    final t = timing(d);
-    final mg = math.min(t.setup, t.hold.isFinite ? t.hold : t.setup);
-    if (mg > bestMargin) {
-      bestMargin = mg;
-      bestDelay = d;
-    }
+  // One direction (TX or RX): its clock and its longest / shortest data line.
+  _Dir direction(GroupLengths g) {
+    final c = solveC(clkVs, g.clock, 'c');
+    final cDelay = link.withLength(g.clock).delay;
+    final lines = <(String, LineSolution)>[
+      (g.longest.name, solveC(dataVs, g.dataMax, 'd')),
+      if (g.spread > 1e-9) (g.shortest.name, solveC(dataVs, g.dataMin, 'd')),
+    ];
+    final arr = arrivals(c, cDelay);
+    final dMid = link.withLength(0.5 * (g.dataMax + g.dataMin)).delay;
+    return _Dir(g, c, cDelay, cDelay - dMid, lines, (d) {
+      var su = double.infinity, ho = double.infinity;
+      var suBy = lines.first.$1, hoBy = lines.first.$1;
+      for (final (name, sol) in lines) {
+        final t = timingOn(sol, arr, d);
+        if (t.setup < su) (su, suBy) = (t.setup, name);
+        if (t.hold < ho) (ho, hoBy) = (t.hold, name);
+      }
+      return (setup: su, hold: ho, suBy: suBy, hoBy: hoBy);
+    });
   }
-  double optimum(({double setup, double hold}) t, double d) => bestDelay;
+
+  final txDir = direction(txL);
+  final rxDir = direction(rxL);
+  final tx = txDir.timing(p.txClockDelay);
+  final rx = rxDir.timing(p.rxClockDelay);
+  // Clock delay that maximises the worst of setup and hold (swept).
+  ({double delay, double margin}) best(_Dir dir) {
+    var bestDelay = double.nan, bestMargin = -double.infinity;
+    for (var i = 0; i <= 200; i++) {
+      final d = 1.5 * tBit * i / 200;
+      final t = dir.timing(d);
+      final mg = math.min(t.setup, t.hold.isFinite ? t.hold : t.setup);
+      if (mg > bestMargin) {
+        bestMargin = mg;
+        bestDelay = d;
+      }
+    }
+    return (delay: bestDelay, margin: bestMargin);
+  }
+
+  final bestTx = best(txDir);
+  final bestRx = identical(rxDir.clock, txDir.clock) && rxDir.lines.length == txDir.lines.length &&
+          rxL.dataMax == txL.dataMax && rxL.dataMin == txL.dataMin
+      ? bestTx
+      : best(rxDir);
+  final bestMargin = bestTx.margin;
 
   // Edge statistics.
   List<ExpectedEdge> expected(List<Transition> tr, double delay) {
@@ -175,10 +219,16 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
         edges: expected(tr, delay),
       );
   final sClk = stats(clk, clkTr, clkDelay);
-  final sData = stats(data, dataTr, dataDelay);
+  final allStats = [
+    sClk,
+    for (final d in [txDir, rxDir]) ...[
+      if (!identical(d.clock, clk)) stats(d.clock, clkTr, d.clockDelay),
+      for (final (name, sol) in d.lines) stats(sol, dataTr, link.withLength(d.g.lengths[name]!).delay),
+    ],
+  ];
   final swing = vHigh - vLow;
-  final os = math.max(sClk.overshoot, sData.overshoot);
-  final us = math.max(sClk.undershoot, sData.undershoot);
+  final os = allStats.map((e) => e.overshoot).reduce(math.max);
+  final us = allStats.map((e) => e.undershoot).reduce(math.max);
   final rb = math.min(sClk.ringbackHigh, sClk.ringbackLow);
   // RGMII specifies 20-80 % edges; for a linear-like edge 20-80 ≈ 0.75 × 10-90.
   final clkRise2080 = sClk.riseTime * 0.75;
@@ -191,7 +241,23 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
   final gl = loadReflection(load, z0);
   final fKnee = 0.35 / tr;
   final il = line.insertionLossDb(fKnee);
-  final routeSkew = clkDelay - dataDelay;
+  final routeSkew = txDir.routeSkew;
+  // Data-line spread within a direction (per-signal lengths).
+  Metric? spreadMetric(_Dir d, String id) {
+    if (d.g.spread <= 1e-9) return null;
+    final sk = link.withLength(d.g.dataMax).delay - link.withLength(d.g.dataMin).delay;
+    return Metric(
+      id: id,
+      label: '${d.g.group.label} data length spread',
+      value: sk,
+      unit: 's',
+      status: sk <= 50e-12 ? SiStatus.good : SiStatus.warning,
+      level: ModelLevel.analytical,
+      note: '${d.g.shortest.name} ${mm(d.g.dataMin)} to ${d.g.longest.name} ${mm(d.g.dataMax)} '
+          '(${mm(d.g.spread)}); keep within ≈ 50 ps',
+    );
+  }
+
   final width = solveWidthForTarget(link.geometry, p.targetZ0);
   // RGMII budgets are tight by design (2 ns delay vs 1 ns setup + 0.5 ns skew),
   // so only slack below 100 ps is flagged as a warning.
@@ -224,19 +290,33 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
       unit: 's',
       status: SiStatus.info,
       level: ModelLevel.analytical,
-      note: '${mm(cfg.pcb.traceLength)} · ${(line.tpdPerMetre * 1e9).toStringAsFixed(2)} ps/mm',
+      note: '${perSig ? '${txL.longest.name} ' : ''}${mm(dataLen)} · ${(line.tpdPerMetre * 1e9).toStringAsFixed(2)} ps/mm',
     ),
     Metric(
       id: 'clkskew',
-      label: 'Clock-to-data routing delay',
+      label: perSig ? 'TX clock-to-data routing delay' : 'Clock-to-data routing delay',
       value: routeSkew,
       unit: 's',
       status: SiStatus.info,
       level: ModelLevel.analytical,
-      note: p.clockExtraLength == 0
-          ? 'Clock and data matched in length'
-          : 'Clock trace ${mm(p.clockExtraLength)} ${p.clockExtraLength > 0 ? 'longer' : 'shorter'} than data',
+      note: perSig
+          ? 'TXC ${mm(txL.clock)} vs data ${mm(txL.dataMin)}–${mm(txL.dataMax)}'
+          : p.clockExtraLength == 0
+              ? 'Clock and data matched in length'
+              : 'Clock trace ${mm(p.clockExtraLength)} ${p.clockExtraLength > 0 ? 'longer' : 'shorter'} than data',
     ),
+    if (perSig)
+      Metric(
+        id: 'clkskew_rx',
+        label: 'RX clock-to-data routing delay',
+        value: rxDir.routeSkew,
+        unit: 's',
+        status: SiStatus.info,
+        level: ModelLevel.analytical,
+        note: 'RXC ${mm(rxL.clock)} vs data ${mm(rxL.dataMin)}–${mm(rxL.dataMax)}',
+      ),
+    if (spreadMetric(txDir, 'spread_tx') case final m?) m,
+    if (spreadMetric(rxDir, 'spread_rx') case final m?) m,
     Metric(
       id: 'il',
       label: 'Line loss at f_knee (${eng(fKnee, 'Hz')})',
@@ -317,7 +397,7 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
     Metric(
       id: 'opt_delay',
       label: 'Best clock delay (centres the window)',
-      value: optimum(tx, p.txClockDelay),
+      value: bestTx.delay,
       unit: 's',
       status: SiStatus.info,
       level: ModelLevel.behavioral,
@@ -331,12 +411,19 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
   Metric m(String id) => metrics.firstWhere((x) => x.id == id);
   final findings = <Finding>[];
   final mmPerNs = 1e-9 / line.tpdPerMetre * 1e3;
-  void timingFinding(String dir, double d, ({double setup, double hold}) t, String where) {
+  void timingFinding(String dir, double d, _Timing t, String where, _Dir dd, double opt) {
     final bad = t.setup < 0 || (t.hold.isFinite && t.hold < 0);
     final tight = !bad && (t.setup < warnSlack || (t.hold.isFinite && t.hold < warnSlack));
     if (!bad && !tight) return;
-    final opt = optimum(t, d);
+    final routeSkew = dd.routeSkew;
     final totalDelay = d + routeSkew;
+    final lim = dd.lines.length < 2
+        ? ''
+        : ' Per-signal lengths: ${[
+            if (t.setup < warnSlack) 'setup limited by ${t.suBy}',
+            if (t.hold.isFinite && t.hold < warnSlack) 'hold limited by ${t.hoBy}',
+          ].join(', ')} (${dd.g.shortest.name} ${mm(dd.g.dataMin)} – ${dd.g.longest.name} ${mm(dd.g.dataMax)}, '
+            '${dd.g.group.clock.name} ${mm(dd.g.clock)}).';
     final String rec;
     if (totalDelay < 0.5e-9) {
       rec = 'There is almost no clock delay (${secs(totalDelay)}). Enable the ${dir == 'TX' ? 'MAC TX or PHY TX' : 'PHY RX or MAC RX'} '
@@ -347,22 +434,27 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
           'Enable exactly one 2 ns delay.';
     } else if (opt.isFinite) {
       rec = 'Adjust the $dir clock delay to ≈ ${secs(opt)} (many PHYs have programmable delay steps), or change the clock '
-          'trace length by ≈ ${((opt - d) * mmPerNs).toStringAsFixed(1)} mm.';
+          'trace length by ≈ ${((opt - d) * 1e9 * mmPerNs).toStringAsFixed(1)} mm.';
     } else {
       rec = 'Increase the clock delay or speed up the data edges.';
     }
+    final spreadPs = (dd.g.spread * line.tpdPerMetre) * 1e12;
+    final matchRec = dd.lines.length > 1 && spreadPs > 50
+        ? 'Match the ${dd.g.group.label} data lines first: they spread ${mm(dd.g.spread)} (${spreadPs.toStringAsFixed(0)} ps). '
+            'Bring ${dd.g.longest.name} to within ≈ ${(0.05 * mmPerNs).toStringAsFixed(1)} mm of the others. '
+        : '';
     findings.add(Finding(
       status: bad ? SiStatus.critical : SiStatus.warning,
       title: bad ? '$dir timing violation' : '$dir timing margin is small',
       reason: 'At the $where the data must be stable ${secs(p.setupTime)} before and ${secs(p.holdTime)} after the '
           'delayed clock edge (plus ±${secs(p.txSkew)} transmitter skew). Setup slack ${secs(t.setup)}, hold slack '
-          '${t.hold.isFinite ? secs(t.hold) : 'n/a'} with ${secs(d)} internal + ${secs(routeSkew)} PCB clock delay.',
-      recommendation: rec,
+          '${t.hold.isFinite ? secs(t.hold) : 'n/a'} with ${secs(d)} internal + ${secs(routeSkew)} PCB clock delay.$lim',
+      recommendation: matchRec + rec,
     ));
   }
 
-  timingFinding('TX', p.txClockDelay, tx, 'PHY');
-  timingFinding('RX', p.rxClockDelay, rx, 'MAC');
+  timingFinding('TX', p.txClockDelay, tx, 'PHY', txDir, bestTx.delay);
+  timingFinding('RX', p.rxClockDelay, rx, 'MAC', rxDir, bestRx.delay);
   if (m('zdev').status != SiStatus.good) {
     findings.add(Finding(
       status: m('zdev').status,
@@ -471,8 +563,13 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
     ...chan.assumptions,
     ...link.assumptions,
     'RGMII ${p.speed.label}: clock and data launched edge-aligned; data ${ddr ? 'on both clock edges' : 'on rising edges'}.',
-    'One data line represents TXD[3:0]/TX_CTL and RXD[3:0]/RX_CTL; TX and RX use the same routing and buffers, '
-        'and differ only in clock delay (TX ${secs(p.txClockDelay)}, RX ${secs(p.rxClockDelay)}).',
+    if (!perSig)
+      'One data line represents TXD[3:0]/TX_CTL and RXD[3:0]/RX_CTL; TX and RX use the same routing and buffers, '
+          'and differ only in clock delay (TX ${secs(p.txClockDelay)}, RX ${secs(p.rxClockDelay)}).'
+    else
+      'Per-signal lengths: ${[for (final g in gls) for (final s in g.group.all) '${s.name} ${mm(g.of(s))}'].join(', ')}. '
+          'Each direction is timed on its own clock and its longest and shortest data line; waveforms show TX '
+          '(TXC and ${txL.longest.name}).',
     'Internal clock delay applied at the sampling point; PCB delay from the ${mm(clkLen)} clock trace.',
     'Driver ${ohm(p.driverImpedance)} + ${ohm(p.seriesR)} series; receiver ${eng(p.receiverCap, 'F')}; '
         'VIH 0.7 VDD, VIL 0.3 VDD at ${volts(vdd)}.',
@@ -504,4 +601,18 @@ SimulationResult simulateRgmii(AnalysisConfig cfg) {
     computeMillis: sw.elapsedMilliseconds,
     checks: checks,
   );
+}
+
+typedef _Timing = ({double setup, double hold, String suBy, String hoBy});
+
+class _Dir {
+  _Dir(this.g, this.clock, this.clockDelay, this.routeSkew, this.lines, this.timing);
+  final GroupLengths g;
+  final LineSolution clock;
+  final double clockDelay;
+
+  /// Clock delay minus the mid-point data delay (PCB clock delay).
+  final double routeSkew;
+  final List<(String, LineSolution)> lines;
+  final _Timing Function(double clockDelay) timing;
 }

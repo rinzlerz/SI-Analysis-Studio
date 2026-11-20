@@ -72,8 +72,16 @@ LinkContext prepareLink({
   int stepsPerEdge = 40,
   required double Function(double oneWayDelay) durationFor,
   double extraLength = 0,
+  double? baseLength,
+  List<double> otherLengths = const [],
 }) {
   final pcb = cfg.pcb;
+  // Base (reference) length of the line model; other routed lengths only set
+  // the time step (shortest) and the simulated span (longest).
+  final baseL = baseLength ?? pcb.traceLength;
+  final lens = [baseL, baseL + extraLength, ...otherLengths];
+  final shortL = lens.reduce(math.min);
+  final longL = lens.reduce(math.max);
   final TraceGeometry geom;
   try {
     geom = geometryFromStackup(pcb.stackup);
@@ -86,14 +94,14 @@ LinkContext prepareLink({
   final line = LineParams(
     z0: zMode,
     eeff: differential && imp.eeffOdd != null ? imp.eeffOdd! : imp.eeff,
-    length: pcb.traceLength,
+    length: baseL,
     width: pcb.traceWidth,
     geometry: geom,
     tanD: pcb.stackup.df,
     roughness: pcb.stackup.roughnessRms,
   );
   final assumptions = <String>[...imp.assumptions];
-  final minDelay = line.tpdPerMetre * math.min(pcb.traceLength, pcb.traceLength + extraLength);
+  final minDelay = line.tpdPerMetre * shortL;
   final auto = minEdge / stepsPerEdge;
   final target = cfg.sim.timeStepTarget > 0 ? cfg.sim.timeStepTarget : auto;
   if (cfg.sim.timeStepTarget > 0 && cfg.sim.timeStepTarget > minEdge / 10) {
@@ -107,7 +115,7 @@ LinkContext prepareLink({
     var last = 0.0;
     final sqEr = math.sqrt(geom.er);
     for (final e in els) {
-      final p = e.position.clamp(0.0, pcb.traceLength);
+      final p = e.position.clamp(0.0, baseL);
       if (p - last > 1e-7) minEl = math.min(minEl, (p - last) * line.tpdPerMetre);
       last = p;
       if (e.type == ChannelElementType.via && e.stubLength > 0) {
@@ -115,7 +123,7 @@ LinkContext prepareLink({
       }
       if (e.type == ChannelElementType.segment) minEl = math.min(minEl, e.delay);
     }
-    if (pcb.traceLength - last > 1e-7) minEl = math.min(minEl, (pcb.traceLength - last) * line.tpdPerMetre);
+    if (baseL - last > 1e-7) minEl = math.min(minEl, (baseL - last) * line.tpdPerMetre);
     if (minEl.isFinite) {
       final floor = 0.2e-12;
       if (minEl < floor) {
@@ -124,7 +132,7 @@ LinkContext prepareLink({
       dt = math.min(dt, math.max(floor, minEl));
     }
   }
-  final duration = durationFor(line.delay + math.max(0, extraLength) * line.tpdPerMetre);
+  final duration = durationFor(line.delay + math.max(0.0, longL - baseL) * line.tpdPerMetre);
   final steps = duration / dt;
   if (steps > maxSimulationSteps) {
     throw SimulationError('The simulation would need ${steps.toStringAsFixed(0)} time steps '

@@ -310,14 +310,22 @@ Figure _topBus(GuidelineFigures f, FigPalette c) {
   final s = <FigShape>[];
   const xL = 110.0, xR = 540.0;
   final names = f.signalNames.isEmpty ? ['CLK', 'D0', 'D1', 'CS'] : f.signalNames;
-  const y0 = 100.0, pitch = 34.0;
-  final height = y0 + pitch * (names.length - 1) + 28 + 50;
-  _chip(s, 20, y0 - 28, 80, pitch * (names.length - 1) + 56, f.leftLabel, c);
-  _chip(s, xR + 10, y0 - 28, 80, pitch * (names.length - 1) + 56, f.rightLabel, c);
-  _lengthArrow(s, xL, xR, 50, f, c, prefix: 'each line ');
+  const y0 = 100.0, pitch = 34.0, groupGap = 22.0;
+  // Line positions, with a gap before each new group (e.g. TX / RX).
+  final ys = <double>[];
+  var y = y0;
   for (var i = 0; i < names.length; i++) {
-    final y = y0 + i * pitch;
-    final hasR = f.seriesR != null;
+    if (i > 0) y += pitch + (f.groupStarts.contains(i) ? groupGap : 0);
+    ys.add(y);
+  }
+  final yLast = ys.last;
+  final height = yLast + 28 + 50;
+  _chip(s, 20, y0 - 28, 80, yLast - y0 + 56, f.leftLabel, c);
+  _chip(s, xR + 10, y0 - 28, 80, yLast - y0 + 56, f.rightLabel, c);
+  _lengthArrow(s, xL, xR, 50, f, c, prefix: f.lineLengths != null ? 'longest line ' : 'each line ');
+  final hasR = f.seriesR != null;
+  for (var i = 0; i < names.length; i++) {
+    final y = ys[i];
     if (hasR) {
       s.add(FigLine(xL, y, xL + 20, y, c.copper, width: 4));
       s.add(FigRect(xL + 20, y - 6, 26, 12, fill: c.box, stroke: c.accent, strokeWidth: 1.4, radius: 2));
@@ -326,18 +334,31 @@ Figure _topBus(GuidelineFigures f, FigPalette c) {
       s.add(FigLine(xL, y, xR, y, c.copper, width: 4));
     }
     s.add(FigText(xL + (hasR ? 54 : 6), y - 9, names[i], c.dim, size: 10, anchor: Anchor.start));
+    final ll = f.lineLengths;
+    if (ll != null && i < ll.length) {
+      final out = f.lineOut != null && i < f.lineOut!.length && f.lineOut![i];
+      if (out) s.add(FigLine(xL + (hasR ? 46 : 0), y, xR, y, c.bad, width: 4));
+      s.add(FigText(xR - 26, y - 9, '${_l(ll[i])}${out ? '  out of match' : ''}', out ? c.bad : c.dim,
+          size: 10, bold: out, anchor: Anchor.end));
+    }
   }
-  if (f.seriesR != null) {
-    s.add(FigText(xL + 33, y0 + pitch * (names.length - 1) + 24, 'Rs ≈ ${ohm(f.seriesR!)}', c.accent, size: 11, bold: true));
+  if (hasR) {
+    s.add(FigText(xL + 33, yLast + 24, 'Rs ≈ ${ohm(f.seriesR!)}', c.accent, size: 11, bold: true));
   }
   if (f.spacing != null) {
-    _dim(s, 330, y0 + 2, 330, y0 + pitch - 2, '≥ ${_l(f.spacing!)}', c.accent);
+    _dim(s, 330, ys[0] + 2, 330, ys[1] - 2, '≥ ${_l(f.spacing!)}', c.accent);
   }
   if (f.matching != null) {
-    final yb = y0 + pitch * (names.length - 1);
+    // One bracket per group.
+    final starts = [0, ...f.groupStarts.where((g) => g > 0 && g < names.length)]..sort();
     const bx = xR - 18;
-    s.add(FigPath([(bx - 6, y0 - 4), (bx, y0 - 4), (bx, yb + 4), (bx - 6, yb + 4)], c.accent, width: 1.4));
-    s.add(FigText(bx - 10, yb + 22, '${f.matchingLabel} ± ${_l(f.matching!)}', c.accent, size: 11, bold: true, anchor: Anchor.end));
+    for (var k = 0; k < starts.length; k++) {
+      final a = ys[starts[k]];
+      final b = ys[k + 1 < starts.length ? starts[k + 1] - 1 : names.length - 1];
+      s.add(FigPath([(bx - 6, a - 4), (bx, a - 4), (bx, b + 4), (bx - 6, b + 4)], c.accent, width: 1.4));
+    }
+    s.add(FigText(bx - 10, yLast + 22, '${f.matchingLabel} ± ${_l(f.matching!)}${starts.length > 1 ? ' per group' : ''}', c.accent,
+        size: 11, bold: true, anchor: Anchor.end));
   }
   final note = f.seriesR != null
       ? 'Series resistors close to the driver (line longer than ${_l(f.criticalLength ?? 0)}).'

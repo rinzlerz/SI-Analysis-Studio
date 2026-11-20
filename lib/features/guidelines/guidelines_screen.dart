@@ -222,7 +222,7 @@ class _GuidelinesScreenState extends State<GuidelinesScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           FigureView(crossSectionFigure(f, pal), maxHeight: 260),
           caption('Cross-section of the routing layer'),
-          FigureView(topViewFigure(f, pal), maxHeight: 300),
+          FigureView(topViewFigure(f, pal), maxHeight: f.lineLengths != null ? 560 : 300),
           caption(f.kind == FigureKind.i2c ? 'Bus topology and pull-ups' : 'Routing rules (top view)'),
           if (via != null) ...[
             FigureView(via, maxHeight: 290),

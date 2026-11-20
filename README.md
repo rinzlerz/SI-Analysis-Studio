@@ -32,6 +32,8 @@ waveforms, SI metrics, Good / Warning / Critical status and recommendations.
 
 Export it as a PDF, as KiCad rules + CSV, or as text. Engine: `lib/simulation/guidelines/guidelines.dart`.
 
+**Per-signal lengths (v0.9):** for SPI, QSPI/OSPI and RGMII, switch on *Per-signal lengths* in section C and enter each line's routed length (SCLK/MOSI/MISO/CS; CLK/IO0–7/CS#/DQS; TXC/TXD0–3/TX_CTL and RXC/RXD0–3/RX_CTL). The simulation times every group on its own clock with its longest and shortest data line, reports the data-line spread, and names the line that limits setup or hold. KiCad import can fill the table automatically (*Use as bus*: net names such as `SPI1_SCK`, `QSPI_IO2`, `ETH_TXD0`, `ETH_RX_DV` are matched). The guideline sheet shows each line's length and marks lines outside the matching budget in red. Model: `lib/simulation/model/bus_lengths.dart`.
+
 **Share links:** *Share link* on a result, or *Share these inputs* in New Analysis, creates a URL that reopens the exact analysis for anyone. The configuration travels in the URL fragment and is never uploaded. IBIS / Touchstone models are not included.
 
 **Web worker:** on the web the engine runs in `sim_worker.js`, compiled from `lib/simulation/worker/sim_worker.dart` by the Pages workflow. With `flutter run -d chrome` there is no worker, and the app falls back to the main thread.

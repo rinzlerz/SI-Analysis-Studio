@@ -18,6 +18,7 @@ import '../common/physics.dart';
 import '../impedance/coupled_lines.dart';
 import '../impedance/impedance.dart';
 import '../integration/design_rules.dart';
+import '../model/bus_lengths.dart';
 import '../model/config.dart';
 import '../transmission_line/line_params.dart';
 
@@ -107,6 +108,9 @@ class GuidelineFigures {
     required this.target,
     required this.signalNames,
     required this.currentLength,
+    this.lineLengths,
+    this.lineOut,
+    this.groupStarts = const [],
     this.leftLabel = 'Driver',
     this.rightLabel = 'Receiver',
     this.acCaps = false,
@@ -127,6 +131,15 @@ class GuidelineFigures {
   final double target;
   final List<String> signalNames;
   final double currentLength;
+
+  /// Per-signal lengths aligned with [signalNames] (null = one length).
+  final List<double>? lineLengths;
+
+  /// True for lines outside the matching budget (aligned with [signalNames]).
+  final List<bool>? lineOut;
+
+  /// Indices in [signalNames] where a new signal group starts (e.g. RX).
+  final List<int> groupStarts;
   final String leftLabel, rightLabel;
   final bool acCaps;
   final double? spacing;
@@ -523,6 +536,51 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
           'shorter than ${_len(lengthMax)}, P/N within ± ${_len(skewMax)}, via stubs below ${_len(stubMax)}.';
   }
 
+  // Per-signal lengths (SPI / QSPI / RGMII): check each data line against
+  // its clock with the matching budget above.
+  List<double>? lineLengths;
+  List<bool>? lineOut;
+  final groupStarts = <int>[];
+  var currentLength = cfg.pcb.traceLength;
+  if (perSignalOn(cfg)) {
+    final gls = groupLengths(cfg);
+    figNames = [for (final gl in gls) for (final sg in gl.group.all) sg.name];
+    lineLengths = [for (final gl in gls) for (final sg in gl.group.all) gl.of(sg)];
+    var at = 0;
+    for (final gl in gls) {
+      if (at > 0) groupStarts.add(at);
+      at += gl.group.all.length;
+    }
+    final tol = skewMax;
+    final out = <String>[];
+    lineOut = [
+      for (final gl in gls)
+        for (final sg in gl.group.all)
+          tol != null && sg.role == SignalRole.data && (gl.of(sg) - gl.clock).abs() > tol + 1e-9,
+    ];
+    for (final gl in gls) {
+      for (final sg in gl.group.data) {
+        final d = gl.of(sg) - gl.clock;
+        if (tol != null && d.abs() > tol + 1e-9) {
+          out.add('${sg.name} ${d > 0 ? '+' : '−'}${_len(d.abs())} vs ${gl.group.clock.name}');
+        }
+      }
+    }
+    currentLength = lineLengths.reduce(math.max);
+    routing.insert(
+        0,
+        GuidelineItem(
+          'Your per-signal lengths',
+          tol == null
+              ? 'Matching not critical at this speed; longest line ${_len(currentLength)}'
+              : out.isEmpty
+                  ? 'All data lines within ± ${_len(tol)} of their clock'
+                  : '${out.length} out of match: ${out.join(', ')}',
+          [for (final gl in gls) '${gl.group.label}: ${[for (final sg in gl.group.all) '${sg.name} ${_mm(gl.of(sg), 1)}'].join(', ')}']
+              .join(' · '),
+          important: out.isNotEmpty,
+        ));
+  }
   if (routing.isNotEmpty) sections.add(GuidelineSection('Length, matching and termination', routing, icon: 'length'));
   if (spacing.isNotEmpty) sections.add(GuidelineSection('Spacing and crosstalk', spacing, icon: 'spacing'));
   if (vias.isNotEmpty) sections.add(GuidelineSection('Vias and layer changes', vias, icon: 'via'));
@@ -583,7 +641,10 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
     gap: diff ? gap : null,
     target: target,
     signalNames: figNames,
-    currentLength: cfg.pcb.traceLength,
+    currentLength: currentLength,
+    lineLengths: lineLengths,
+    lineOut: lineOut,
+    groupStarts: groupStarts,
     leftLabel: switch (p) {
       Protocol.spi || Protocol.qspi || Protocol.i2c => 'Controller',
       Protocol.rgmii => 'MAC',

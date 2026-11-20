@@ -21,8 +21,9 @@ Future<Uint8List> buildGuidelinesPdf(LayoutGuidelines g) async {
   final bold = pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold);
   final c = g.config;
   final st = c.pcb.stackup;
-  pw.Widget fig(Figure f, double height) => pw.Container(
-        height: height,
+  // Height from the figure's aspect ratio at ~480 pt wide, capped.
+  pw.Widget fig(Figure f, double maxHeight) => pw.Container(
+        height: (480 * f.height / f.width).clamp(40.0, maxHeight),
         margin: const pw.EdgeInsets.symmetric(vertical: 4),
         child: pw.SvgImage(svg: figureToSvg(f, background: 0xFFFFFFFF, textMap: pdfSafe)),
       );
@@ -48,9 +49,9 @@ Future<Uint8List> buildGuidelinesPdf(LayoutGuidelines g) async {
       if (figs != null) ...[
         if (lengthGaugeFigure(figs, FigPalette.light) case final gauge?) fig(gauge, 55),
         pw.Header(level: 1, text: 'Diagrams'),
-        fig(crossSectionFigure(figs, FigPalette.light), 150),
-        fig(topViewFigure(figs, FigPalette.light), 190),
-        if (viaStubFigure(figs, FigPalette.light) case final via?) fig(via, 170),
+        fig(crossSectionFigure(figs, FigPalette.light), 170),
+        fig(topViewFigure(figs, FigPalette.light), 420),
+        if (viaStubFigure(figs, FigPalette.light) case final via?) fig(via, 200),
       ],
       pw.Header(level: 1, text: 'Trace width per routing layer'),
       pw.TableHelper.fromTextArray(

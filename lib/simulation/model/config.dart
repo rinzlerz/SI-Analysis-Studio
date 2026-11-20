@@ -119,6 +119,11 @@ T _enum<T extends Enum>(List<T> values, Object? name, T fallback) {
 double _d(Object? v, double fallback) => v is num ? v.toDouble() : fallback;
 int _i(Object? v, int fallback) => v is num ? v.toInt() : fallback;
 bool _b(Object? v, bool fallback) => v is bool ? v : fallback;
+Map<String, double> _lens(Object? v) => {
+      if (v is Map)
+        for (final e in v.entries)
+          if (e.key is String && e.value is num && (e.value as num).isFinite) e.key as String: (e.value as num).toDouble(),
+    };
 
 // ---------------------------------------------------------------------------
 // PCB stackup
@@ -517,7 +522,16 @@ class SpiConfig {
     this.useDqs = false,
     this.dataClockMismatch = 0,
     this.readSampleDelay = 0,
-  });
+    this.perSignalLengths = false,
+    Map<String, double>? signalLengths,
+  }) : signalLengths = signalLengths ?? {};
+
+  /// Use [signalLengths] (one routed length per signal, by name) instead of
+  /// the single trace length and IO-to-CLK mismatch.
+  bool perSignalLengths;
+
+  /// Routed length per signal (m), keyed by signal name (SCLK, MOSI, IO0...).
+  Map<String, double> signalLengths;
 
   /// QSPI / OSPI only: number of IO lines (4 or 8).
   int ioWidth;
@@ -623,6 +637,8 @@ class SpiConfig {
         'dqs': useDqs,
         'dcm': dataClockMismatch,
         'rsd': readSampleDelay,
+        if (perSignalLengths) 'perSig': true,
+        if (signalLengths.isNotEmpty) 'lens': {...signalLengths},
       };
 
   factory SpiConfig.fromJson(Map<String, Object?> j) {
@@ -657,6 +673,8 @@ class SpiConfig {
       useDqs: _b(j['dqs'], false),
       dataClockMismatch: _d(j['dcm'], 0),
       readSampleDelay: _d(j['rsd'], 0),
+      perSignalLengths: _b(j['perSig'], false),
+      signalLengths: _lens(j['lens']),
     );
   }
 }
@@ -834,7 +852,14 @@ class RgmiiConfig {
     this.setupTime = 1.0e-9,
     this.holdTime = 1.0e-9,
     this.targetZ0 = 50,
-  });
+    this.perSignalLengths = false,
+    Map<String, double>? signalLengths,
+  }) : signalLengths = signalLengths ?? {};
+
+  /// Use [signalLengths] (TXC, TXD0..3, TX_CTL, RXC, ...) instead of the
+  /// single trace length and clock extra length.
+  bool perSignalLengths;
+  Map<String, double> signalLengths;
 
   RgmiiSpeed speed;
   double voltage;
@@ -879,6 +904,8 @@ class RgmiiConfig {
         'tsu': setupTime,
         'th': holdTime,
         'z0t': targetZ0,
+        if (perSignalLengths) 'perSig': true,
+        if (signalLengths.isNotEmpty) 'lens': {...signalLengths},
       };
 
   factory RgmiiConfig.fromJson(Map<String, Object?> j) {
@@ -898,6 +925,8 @@ class RgmiiConfig {
       setupTime: _d(j['tsu'], d.setupTime),
       holdTime: _d(j['th'], d.holdTime),
       targetZ0: _d(j['z0t'], d.targetZ0),
+      perSignalLengths: _b(j['perSig'], false),
+      signalLengths: _lens(j['lens']),
     );
   }
 }

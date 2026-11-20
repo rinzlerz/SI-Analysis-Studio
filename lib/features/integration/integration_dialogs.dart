@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../simulation/comparison/sweep.dart';
 import '../../simulation/engine.dart';
 import '../../simulation/integration/design_rules.dart';
 import '../../simulation/integration/kicad.dart';
+import '../../simulation/model/bus_lengths.dart';
 import '../../shared/export/export_service.dart';
 import '../../shared/files/file_loader.dart';
 import '../../shared/widgets/eng_field.dart';
@@ -74,6 +76,9 @@ class _KicadSheetState extends State<_KicadSheet> {
     }
 
     String len(double m) => '${(m * 1e3).toStringAsFixed(2)} mm';
+    final bus = supportsSignalLengths(widget.controller.draft.protocol)
+        ? matchBusNets(widget.controller.draft, b)
+        : const <String, KicadNet>{};
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -108,6 +113,17 @@ class _KicadSheetState extends State<_KicadSheet> {
             ),
             Expanded(
               child: ListView(children: [
+                if (bus.length >= 2)
+                  ListTile(
+                    leading: const Icon(Icons.view_week_outlined),
+                    title: Text('Use as bus: ${bus.length} of ${busSignals(widget.controller.draft).length} signals found'),
+                    subtitle: Text(
+                      [for (final e in bus.entries) '${e.key} ← ${e.value.name} (${len(e.value.length)})'].join('\n'),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    isThreeLine: true,
+                    onTap: () => Navigator.pop(context, applyKicadBus(widget.controller.draft, b, bus, useStackup: _useStackup)),
+                  ),
                 if (widget.differential && pairs.isNotEmpty)
                   const ListTile(dense: true, title: Text('Differential pairs', style: TextStyle(color: AppColors.textDim))),
                 if (widget.differential)

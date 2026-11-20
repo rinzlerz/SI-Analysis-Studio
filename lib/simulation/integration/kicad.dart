@@ -13,6 +13,7 @@ library;
 
 import 'dart:math' as math;
 
+import '../model/bus_lengths.dart';
 import '../model/config.dart';
 
 class KicadError implements Exception {
@@ -431,6 +432,96 @@ List<String> applyKicadNet(AnalysisConfig cfg, KicadBoard board, {KicadNet? net,
     }
     out.add('${main.vias} via(s): barrel ${(barrel * 1e3).toStringAsFixed(2)} mm, stub ${(stub * 1e3).toStringAsFixed(2)} mm, '
         'antipad assumed pad + 0.3 mm; placed evenly along the route.');
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Bus import (per-signal lengths)
+// ---------------------------------------------------------------------------
+
+String _norm(String s) => s.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+/// Net-name endings that identify each bus signal (normalised: upper case,
+/// no separators). The longest matching alias wins.
+List<String> _aliases(String signal) {
+  final io = RegExp(r'^IO(\d)$').firstMatch(signal);
+  if (io != null) return ['IO${io[1]}', 'DQ${io[1]}', 'SIO${io[1]}'];
+  final rg = RegExp(r'^(TX|RX)D(\d)$').firstMatch(signal);
+  if (rg != null) return ['${rg[1]}D${rg[2]}', '${rg[1]}DATA${rg[2]}'];
+  return switch (signal) {
+    'SCLK' => ['SCLK', 'SCK', 'CLK', 'SPICLK'],
+    'CLK' => ['CLK', 'SCK', 'SCLK'],
+    'MOSI' => ['MOSI', 'COPI', 'SIMO'],
+    'MISO' => ['MISO', 'CIPO', 'SOMI'],
+    'CS' || 'CS#' => ['CS', 'NCS', 'CSN', 'CSB', 'SS', 'NSS', 'CE'],
+    'DQS' => ['DQS', 'RWDS'],
+    'TXC' => ['TXC', 'TXCLK', 'GTXCLK', 'TXCK'],
+    'RXC' => ['RXC', 'RXCLK', 'RXCK'],
+    'TX_CTL' => ['TXCTL', 'TXEN', 'TXCTRL'],
+    'RX_CTL' => ['RXCTL', 'RXDV', 'RXCTRL'],
+    _ => [_norm(signal)],
+  };
+}
+
+/// Finds the board net for each bus signal of [cfg]'s protocol. When several
+/// nets match, the one sharing the most common prefix with the other matches
+/// is used (e.g. all SPI1_* rather than a mix of SPI1_ and SPI2_).
+Map<String, KicadNet> matchBusNets(AnalysisConfig cfg, KicadBoard board) {
+  final sigs = busSignals(cfg);
+  final routed = board.routedNets;
+  final cands = <String, List<(KicadNet, String)>>{};
+  for (final s in sigs) {
+    final aliases = _aliases(s.name)..sort((a, b) => b.length.compareTo(a.length));
+    for (final n in routed) {
+      final nn = _norm(n.name.split('/').last);
+      for (final a in aliases) {
+        if (nn.endsWith(a)) {
+          final prefix = nn.substring(0, nn.length - a.length);
+          (cands[s.name] ??= []).add((n, prefix));
+          break;
+        }
+      }
+    }
+  }
+  final votes = <String, int>{};
+  for (final l in cands.values) {
+    for (final p in {for (final (_, pre) in l) pre}) {
+      votes[p] = (votes[p] ?? 0) + 1;
+    }
+  }
+  final out = <String, KicadNet>{};
+  final usedNets = <String>{};
+  for (final s in sigs) {
+    final l = [...?cands[s.name]]..removeWhere((e) => usedNets.contains(e.$1.name));
+    if (l.isEmpty) continue;
+    l.sort((a, b) => (votes[b.$2] ?? 0).compareTo(votes[a.$2] ?? 0));
+    out[s.name] = l.first.$1;
+    usedNets.add(l.first.$1.name);
+  }
+  return out;
+}
+
+/// Applies matched bus nets: stackup, layer, width and vias from the clock
+/// net, then one routed length per signal.
+List<String> applyKicadBus(AnalysisConfig cfg, KicadBoard board, Map<String, KicadNet> matches, {bool useStackup = true}) {
+  final groups = busGroups(cfg);
+  final clockNet = matches[groups.first.clock.name] ?? matches.values.first;
+  final out = applyKicadNet(cfg, board, net: clockNet, useStackup: useStackup);
+  setPerSignal(cfg, true);
+  final missing = <String>[];
+  for (final s in busSignals(cfg)) {
+    final n = matches[s.name];
+    if (n != null) {
+      setSignalLength(cfg, s.name, n.length);
+    } else {
+      setSignalLength(cfg, s.name, cfg.pcb.traceLength);
+      missing.add(s.name);
+    }
+  }
+  out.add('Per-signal lengths: ${[for (final e in matches.entries) '${e.key} ← ${e.value.name} ${(e.value.length * 1e3).toStringAsFixed(2)} mm'].join(', ')}.');
+  if (missing.isNotEmpty) {
+    out.add('Not found on the board: ${missing.join(', ')} – set to ${(cfg.pcb.traceLength * 1e3).toStringAsFixed(2)} mm; edit them in section C.');
   }
   return out;
 }
