@@ -8,6 +8,7 @@ import '../../core/app_info.dart';
 import '../../shared/share_actions.dart';
 import '../about/about_screen.dart';
 import '../history/history_screen.dart';
+import '../guidelines/guidelines_screen.dart';
 import 'examples.dart';
 import '../integration/integration_dialogs.dart';
 import '../library/library_screen.dart';
@@ -141,6 +142,13 @@ class HomeScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    _ToolTile(
+                      icon: Icons.route,
+                      title: 'Layout guidelines',
+                      desc: 'Width, length, matching and spacing limits before you route',
+                      onTap: () => Navigator.of(context)
+                          .push(MaterialPageRoute<void>(builder: (_) => GuidelinesScreen(controller: controller))),
+                    ),
                     _ToolTile(
                       icon: Icons.developer_board,
                       title: 'Import from KiCad',

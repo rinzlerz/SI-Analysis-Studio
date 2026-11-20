@@ -19,6 +19,17 @@ waveforms, SI metrics, Good / Warning / Critical status and recommendations.
 
 **Feedback:** https://github.com/rinzlerz/SI-Analysis-Studio/issues/new?template=feedback.yml (also from the app: Home → feedback icon, or a result's ⋮ → *Report a problem*, which pre-fills a link to that analysis).
 
+**Layout guidelines (v0.7):** Home → *Layout guidelines*, or New Analysis → ⋮. Before routing, pick an interface and get, for the current stackup:
+- trace width per layer for the impedance target, plus the ±10 % width window;
+- propagation delay;
+- maximum length, from timing, loss or the I²C capacitance budget;
+- P/N, clock-to-data or lane matching;
+- spacing for crosstalk (Kb);
+- via count and the via-stub limit (back-drill);
+- termination.
+
+Export it as a PDF, as KiCad rules + CSV, or as text. Engine: `lib/simulation/guidelines/guidelines.dart`.
+
 **Share links:** *Share link* on a result, or *Share these inputs* in New Analysis, creates a URL that reopens the exact analysis for anyone. The configuration travels in the URL fragment and is never uploaded. IBIS / Touchstone models are not included.
 
 **Web worker:** on the web the engine runs in `sim_worker.js`, compiled from `lib/simulation/worker/sim_worker.dart` by the Pages workflow. With `flutter run -d chrome` there is no worker, and the app falls back to the main thread.

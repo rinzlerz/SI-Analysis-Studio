@@ -8,52 +8,9 @@ import '../../features/waveform/eye_diagram_view.dart';
 import '../../features/waveform/waveform_viewer.dart';
 import '../../simulation/common/format.dart';
 import '../../simulation/engine.dart';
+import 'pdf_text.dart';
 
-/// The built-in PDF fonts cover ASCII only; map engineering symbols.
-String pdfSafe(String s) {
-  const map = {
-    'Ω': 'ohm',
-    'µ': 'u',
-    'μ': 'u',
-    'Γ': 'G',
-    'ε': 'e',
-    '≤': '<=',
-    '≥': '>=',
-    '≈': '~',
-    '±': '+/-',
-    '×': 'x',
-    '−': '-',
-    '–': '-',
-    '—': '-',
-    '·': '-',
-    '→': '->',
-    '⊗': '(x)',
-    '₀': '0',
-    '…': '...',
-    '’': "'",
-    '“': '"',
-    '”': '"',
-    '⚠': '!',
-    '√': 'sqrt',
-    'τ': 'tau',
-    'π': 'pi',
-    'α': 'alpha',
-    'δ': 'delta',
-    'Δ': 'd',
-  };
-  final b = StringBuffer();
-  for (final r in s.runes) {
-    final ch = String.fromCharCode(r);
-    if (map.containsKey(ch)) {
-      b.write(map[ch]);
-    } else if (r < 128) {
-      b.write(ch);
-    } else {
-      b.write('?');
-    }
-  }
-  return b.toString();
-}
+export 'pdf_text.dart' show pdfSafe;
 
 /// Builds the SI analysis report PDF (PRD 11): project information,
 /// protocol / PCB configuration, waveform and eye images, metrics,

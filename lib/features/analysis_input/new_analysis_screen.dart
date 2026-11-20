@@ -22,6 +22,7 @@ import 'channel_editor.dart';
 import '../../data/models/library_item.dart';
 import '../../shared/widgets/dialogs.dart';
 import '../../shared/share_actions.dart';
+import '../guidelines/guidelines_screen.dart';
 import '../integration/integration_dialogs.dart';
 
 /// PRD 9.3 – guided configuration in expandable sections A–F.
@@ -158,11 +159,22 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
                       await startSweep(context, c);
                     case 'link':
                       await shareAnalysis(context, cfg, name: c.draftName);
+                    case 'guide':
+                      await Navigator.of(context)
+                          .push(MaterialPageRoute<void>(builder: (_) => GuidelinesScreen(controller: c)));
                     case 'reset':
                       await _confirmReset();
                   }
                 },
                 itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'guide',
+                    child: ListTile(
+                      leading: Icon(Icons.route),
+                      title: Text('Layout guidelines'),
+                      subtitle: Text('Routing limits for this stackup'),
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'kicad',
                     child: ListTile(
