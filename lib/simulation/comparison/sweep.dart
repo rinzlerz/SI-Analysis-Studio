@@ -76,6 +76,7 @@ extension SweepParamInfo on SweepParam {
             Protocol.usb2 => c.usb2.driverImpedance,
             Protocol.rgmii => c.rgmii.driverImpedance,
             Protocol.i2c => c.i2c.rOn,
+            Protocol.ddr => c.ddr.ctrlRon,
             Protocol.usb3 || Protocol.pcie || Protocol.hdmi => c.serdes.txImpedance,
           },
         SweepParam.receiverCap => switch (c.protocol) {
@@ -83,6 +84,7 @@ extension SweepParamInfo on SweepParam {
             Protocol.usb2 => c.usb2.receiverCap,
             Protocol.rgmii => c.rgmii.receiverCap,
             Protocol.i2c => c.i2c.pinCap,
+            Protocol.ddr => c.ddr.ioCap,
             Protocol.usb3 || Protocol.pcie || Protocol.hdmi => c.serdes.receiverCap,
           },
         SweepParam.clock => c.protocol == Protocol.i2c ? c.i2c.clockHz : c.spiCfg.clockHz,
@@ -135,6 +137,8 @@ extension SweepParamInfo on SweepParam {
             c.rgmii.driverImpedance = v;
           case Protocol.i2c:
             c.i2c.sinkCurrent = 0.4 / v;
+          case Protocol.ddr:
+            c.ddr.ctrlRon = v;
           case Protocol.usb3:
           case Protocol.pcie:
           case Protocol.hdmi:
@@ -151,6 +155,8 @@ extension SweepParamInfo on SweepParam {
             c.rgmii.receiverCap = v;
           case Protocol.i2c:
             c.i2c.pinCap = v;
+          case Protocol.ddr:
+            c.ddr.ioCap = v;
           case Protocol.usb3:
           case Protocol.pcie:
           case Protocol.hdmi:

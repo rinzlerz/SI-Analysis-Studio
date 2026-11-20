@@ -99,6 +99,11 @@ Map<String, Object?> driverPresetFrom(AnalysisConfig c) {
       for (final k in ['tr', 'tf', 'rdrv', 'rser', 'rxTermOn', 'rxTerm', 'cin', 'rin']) {
         out[k] = p[k];
       }
+    case Protocol.ddr:
+      final p = c.ddr.toJson();
+      for (final k in ['std', 'ronC', 'ronD', 'odtW', 'odtR', 'cio', 'tr', 'jit', 'train', 'cdev', 'ronCa', 'vtt', 'odtCa']) {
+        if (p.containsKey(k)) out[k] = p[k];
+      }
     case Protocol.usb3:
     case Protocol.pcie:
     case Protocol.hdmi:
@@ -126,6 +131,8 @@ bool applyDriverPreset(AnalysisConfig c, Map<String, Object?> d) {
       c.hdmi = SerdesConfig.fromJson({...c.hdmi.toJson(), ...d});
     case Protocol.usb2:
       c.usb2 = Usb2Config.fromJson({...c.usb2.toJson(), ...d});
+    case Protocol.ddr:
+      c.ddr = DdrConfig.fromJson({...c.ddr.toJson(), ...d});
     case Protocol.usb3:
       c.usb3 = SerdesConfig.fromJson({...c.usb3.toJson(), ...d});
     case Protocol.pcie:

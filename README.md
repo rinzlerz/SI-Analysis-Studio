@@ -34,6 +34,8 @@ Export it as a PDF, as KiCad rules + CSV, or as text. Engine: `lib/simulation/gu
 
 **Per-signal lengths (v0.9):** for SPI, QSPI/OSPI and RGMII, switch on *Per-signal lengths* in section C and enter each line's routed length (SCLK/MOSI/MISO/CS; CLK/IO0–7/CS#/DQS; TXC/TXD0–3/TX_CTL and RXC/RXD0–3/RX_CTL). The simulation times every group on its own clock with its longest and shortest data line, reports the data-line spread, and names the line that limits setup or hold. KiCad import can fill the table automatically (*Use as bus*: net names such as `SPI1_SCK`, `QSPI_IO2`, `ETH_TXD0`, `ETH_RX_DV` are matched). The guideline sheet shows each line's length and marks lines outside the matching budget in red. Model: `lib/simulation/model/bus_lengths.dart`.
 
+**DDR3 / DDR4 / LPDDR4 (v0.10):** pick the standard and data rate; the byte lane (DQ0–7, DM, DQS) is simulated for writes and reads with the standard's ODT scheme, the eyes are checked against a rectangular receiver mask, the ODT options are swept, and command/address is checked at every device of the fly-by (DDR3/DDR4) or on the point-to-point channel (LPDDR4). The guideline sheet adds DDR rules (DQ-to-DQS and CA-to-CK matching, CK longer than DQS, fly-by span, stubs, VTT value) and a fly-by diagram. Engine: `lib/simulation/protocols/ddr_sim.dart`; reference values: `lib/simulation/model/ddr_config.dart`.
+
 **Share links:** *Share link* on a result, or *Share these inputs* in New Analysis, creates a URL that reopens the exact analysis for anyone. The configuration travels in the URL fragment and is never uploaded. IBIS / Touchstone models are not included.
 
 **Web worker:** on the web the engine runs in `sim_worker.js`, compiled from `lib/simulation/worker/sim_worker.dart` by the Pages workflow. With `flutter run -d chrome` there is no worker, and the app falls back to the main thread.
@@ -138,6 +140,7 @@ Also new:
 | **I²C** (Standard / Fast / Fast-mode Plus) | Open-drain driver with slope-controlled fall, pull-up to VDD, bus capacitance from trace + device pins + extras (new circuit-solver model) | Rise time (30–70 %), fall time, bus capacitance vs 400/550 pF, allowed pull-up range and a recommended E12 value, VOL / noise margin, effective tLOW/tHIGH, tSU;DAT, ringing. Limits from NXP UM10204 |
 | **QSPI / Octal SPI** | SPI engine extended with x4/x8, SDR or DTR, IO-to-CLK length mismatch, read capture delay and DQS read strobe | Write setup/hold at the flash, read timing at the controller (round trip + flash tV), **recommended read sample delay** found by sweeping the capture point |
 | **Ethernet RGMII** (1000/100/10) | Source-synchronous clock + data, edge-aligned launch, internal "RGMII-ID" delay and/or PCB clock delay, TskewT | Setup/hold at PHY (TX) and MAC (RX), best clock delay, detection of a missing or double 2 ns delay, clock edge rate, ringing |
+| **DDR3 / DDR3L / DDR4 / LPDDR4 / LPDDR4X** | Byte lane write and read (Ron → trace → pin C + ODT to VDDQ/2, VDDQ or VSSQ) on the circuit solver; CA/CK fly-by with N devices on stubs and VTT termination (LPDDR4: point to point with CA ODT) | Write/read eye vs a rectangular Rx mask at a trained VREF, margin after jitter and DQ-to-DQ skew, **ODT sweep with the best value**, CA setup/hold at every device, CK fly-by delay (write leveling), CK-after-DQS rule, loaded fly-by impedance and VTT value. Masks are approximate JEDEC-style references and can be overridden |
 | **HDMI** (TMDS 1.65 / 3.4 / 6 Gb/s, FRL 12 Gb/s) | SerDes engine with 100 Ω pairs, CTLE/DFE for HDMI 2.x | Eye vs approximate reference minimums, intra-pair and inter-pair skew, trace loss guideline (board only, the cable is excluded) |
 
 Also fixed: the ring-back measurement started before the edge finished, which reported a spurious "low ring-back margin" warning on clean SPI edges.
@@ -231,7 +234,6 @@ The engine tests run with `flutter test`:
 
 ## 6. Known limitations / next steps
 
-- All four SPI signals share one length and termination. Per-signal lengths are a simple extension.
 - No NRZI, bit stuffing or SYNC for USB; no 8b/10b or 128b/130b encoding for SerDes.
 - **Not supported:**
   - IBIS-AMI, V-T waveform tables and package RLC.
@@ -244,7 +246,8 @@ The engine tests run with `flutter test`:
   - Altium/Allegro import is not available; for those tools use the CSV rule export, or set parameters by hand.
 - **Sweeps:** run one after another on the device (about 1–5 s per configuration).
 - **I²C:** acknowledge bits and clock stretching by targets are not simulated; all target pins are lumped at the far end (worst case); channel elements are ignored (enter their capacitance as "other capacitance").
-- **RGMII:** one data line represents the group; TX and RX share routing and differ only in clock delay.
-- **QSPI:** IO0 represents all IO lines; the read path ignores a series resistor placed at the controller end.
+- **RGMII:** TX and RX share buffers and differ in clock delay and (with per-signal lengths) routing.
+- **QSPI:** IO lines share buffers; the read path ignores a series resistor placed at the controller end.
 - **HDMI:** eye minimums are approximations, not the HDMI compliance test specification.
-- **Not yet supported:** DDR3/DDR4/LPDDR4, MIPI D-PHY, eMMC/SD, LVDS, CAN/RS-485.
+- **DDR:** linear drivers, no package model, one rank (no RTT_PARK), one representative byte lane; crosstalk and SSO are covered only by the jitter allowances; CK is simulated as one leg of the pair; DDR5 is not covered.
+- **Not yet supported:** DDR5, MIPI D-PHY, eMMC/SD, LVDS, CAN/RS-485.

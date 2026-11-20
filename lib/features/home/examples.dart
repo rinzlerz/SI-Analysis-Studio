@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/state/app_controller.dart';
 import '../../simulation/engine.dart';
+import '../../simulation/model/bus_lengths.dart';
 import '../analysis_results/results_screen.dart';
 
 /// One-tap example analyses for first-time users and testers.
@@ -52,6 +53,17 @@ final List<ExampleAnalysis> exampleAnalyses = [
     Icons.memory,
     Protocol.qspi,
     (c) {},
+  ),
+  ExampleAnalysis(
+    'DDR4-3200 with a long DQ line',
+    'One DQ 15 mm longer than the rest of its byte, 4-device fly-by: eye margin, ODT advice, CA timing',
+    Icons.developer_board,
+    Protocol.ddr,
+    (c) {
+      c.ddr.rate = 3200;
+      setPerSignal(c, true);
+      setSignalLength(c, 'DQ5', c.pcb.traceLength + 15e-3);
+    },
   ),
   ExampleAnalysis(
     'PCIe Gen 4 over 450 mm',

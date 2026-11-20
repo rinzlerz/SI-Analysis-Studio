@@ -172,6 +172,7 @@ Future<void> exportDesignRules(BuildContext context, SimulationResult r) async {
     Protocol.usb3 => '/USB3_TX',
     Protocol.pcie => '/PCIE_TX0',
     Protocol.hdmi => '/HDMI_D0',
+    Protocol.ddr => '/DDR_DQ*',
   });
   final net = await showDialog<String>(
     context: context,

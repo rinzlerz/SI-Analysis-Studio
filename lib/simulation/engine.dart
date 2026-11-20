@@ -7,6 +7,7 @@ library;
 import 'impedance/impedance.dart';
 import 'model/config.dart';
 import 'model/result.dart';
+import 'protocols/ddr_sim.dart';
 import 'protocols/i2c_sim.dart';
 import 'protocols/rgmii_sim.dart';
 import 'protocols/serdes_sim.dart';
@@ -36,6 +37,7 @@ SimulationResult runAnalysis(AnalysisConfig cfg) {
       Protocol.rgmii => simulateRgmii(cfg),
       Protocol.usb2 => simulateUsb2(cfg),
       Protocol.usb3 || Protocol.pcie || Protocol.hdmi => simulateSerdes(cfg),
+      Protocol.ddr => simulateDdr(cfg),
     };
     final warnings = validateConfig(cfg).where((i) => !i.blocking);
     if (warnings.isNotEmpty) {

@@ -318,8 +318,346 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
         Protocol.rgmii => _rgmiiConfig(),
         Protocol.usb2 => _usbConfig(),
         Protocol.usb3 || Protocol.pcie || Protocol.hdmi => _serdesConfig(),
+        Protocol.ddr => _ddrConfig(),
       },
     );
+  }
+
+  // ---------------------------------------------------------------- DDR
+  static const _mv = UnitSpec('mV', 1e-3);
+
+  Widget _subhead(String t) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 2),
+        child: Text(t, style: const TextStyle(color: AppColors.textDim, fontWeight: FontWeight.w600)),
+      );
+
+  /// Dropdown of standard values that keeps a custom current value selectable.
+  Widget _ohmPick(String label, double value, List<double> opts, void Function(double) set) {
+    final items = [...opts, if (!opts.contains(value)) value]..sort();
+    return LabeledDropdown<double>(
+      label: label,
+      value: value,
+      items: items,
+      itemLabel: (v) => '${formatInput(v, maxDecimals: 1)} Ω',
+      onChanged: (v) => _set(() => set(v)),
+    );
+  }
+
+  Widget _ddrConfig() {
+    final p = cfg.ddr;
+    final std = p.standard;
+    final lu = c.settings.lengthUnit.spec;
+    final flyBy = std.caTopology == CaTopology.flyBy;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      FieldRow(children: [
+        LabeledDropdown<DdrStandard>(
+          label: 'Standard',
+          value: std,
+          items: DdrStandard.values,
+          itemLabel: (s) => '${s.label} (${s.vddq} V)',
+          onChanged: (s) => _set(() {
+            p.standard = s;
+            p.applyStandardDefaults();
+            c.draftRevision++;
+          }),
+        ),
+        LabeledDropdown<int>(
+          label: 'Data rate',
+          value: std.rates.contains(p.rate) ? p.rate : std.defaultRate,
+          items: std.rates,
+          itemLabel: (r) => '$r MT/s',
+          onChanged: (r) => _set(() {
+            p.rate = r;
+            c.draftRevision++;
+          }),
+        ),
+      ]),
+      LabeledDropdown<DdrTraining>(
+        label: 'DQ/DQS training in the controller',
+        value: p.training,
+        items: DdrTraining.values,
+        itemLabel: (t) => t == DdrTraining.perByte ? 'Per byte (DQ-to-DQ skew remains)' : 'Per-bit deskew',
+        onChanged: (t) => _set(() => p.training = t),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          'Byte lane (DQ0–7, DM, DQS): length from section C – turn on per-signal lengths there for DQ-to-DQS skew. '
+          '${std.dqTerm == DqTermination.ctt ? 'SSTL, ODT to VDDQ/2.' : std.dqTerm == DqTermination.pod ? 'POD, ODT to VDDQ.' : 'LVSTL, ODT to VSSQ.'}',
+          style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+        ),
+      ),
+      _subhead(flyBy ? 'Command / address fly-by (CA, CTRL, CK)' : 'Command / address (point to point)'),
+      FieldRow(children: [
+        EngField(
+          key: _k('ddev'),
+          label: flyBy ? 'DRAM devices on the fly-by' : 'Dies on the channel',
+          value: p.devices.toDouble(),
+          unit: Units.none,
+          min: 1,
+          max: flyBy ? 16 : 2,
+          decimals: 0,
+          onValidity: _valid('ddev'),
+          onChanged: (v) => _set(() => p.devices = v.round()),
+        ),
+        EngField(
+          key: _k('dlead-${lu.label}'),
+          label: 'Lead-in (controller → first device)',
+          value: p.leadIn,
+          unit: lu,
+          min: 1e-3,
+          max: 0.5,
+          decimals: 3,
+          onValidity: _valid('dlead'),
+          onChanged: (v) => _set(() => p.leadIn = v),
+        ),
+      ]),
+      FieldRow(children: [
+        if (flyBy)
+          EngField(
+            key: _k('dpitch-${lu.label}'),
+            label: 'Device spacing',
+            value: p.spacing,
+            unit: lu,
+            min: 1e-3,
+            max: 0.1,
+            decimals: 3,
+            onValidity: _valid('dpitch'),
+            onChanged: (v) => _set(() => p.spacing = v),
+          ),
+        EngField(
+          key: _k('dstub-${lu.label}'),
+          label: 'Stub (via + breakout)',
+          value: p.stub,
+          unit: lu,
+          min: 0.2e-3,
+          max: 30e-3,
+          decimals: 3,
+          onValidity: _valid('dstub'),
+          onChanged: (v) => _set(() => p.stub = v),
+        ),
+      ]),
+      FieldRow(children: [
+        EngField(
+          key: _k('dcacm-${lu.label}'),
+          label: 'CA length − CK length',
+          value: p.caClkMismatch,
+          unit: lu,
+          min: -0.1,
+          max: 0.1,
+          decimals: 3,
+          tooltip: 'Positive when the CA traces are longer than CK.',
+          onValidity: _valid('dcacm'),
+          onChanged: (v) => _set(() => p.caClkMismatch = v),
+        ),
+        if (flyBy)
+          EngField(
+            key: _k('dvtt'),
+            label: 'VTT resistor',
+            value: p.vttR,
+            unit: Units.ohm,
+            min: 10,
+            max: 200,
+            decimals: 1,
+            onValidity: _valid('dvtt'),
+            onChanged: (v) => _set(() => p.vttR = v),
+          )
+        else
+          _ohmPick('CA on-die termination', p.caOdt, const [40, 48, 60, 80, 120, 240], (v) => p.caOdt = v),
+      ]),
+      if (flyBy)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('2T command timing'),
+          subtitle: const Text('CA held for two clocks – relaxes CA setup/hold on heavily loaded buses',
+              style: TextStyle(fontSize: 12, color: AppColors.textDim)),
+          value: p.twoT,
+          onChanged: (v) => _set(() => p.twoT = v),
+        ),
+    ]);
+  }
+
+  Widget _ddrDriver() {
+    final p = cfg.ddr;
+    final std = p.standard;
+    final ref = p.referenceMasks;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _subhead('Drive strength and ODT'),
+      FieldRow(children: [
+        _ohmPick('Controller Ron (writes)', p.ctrlRon, std.ctrlRonOptions, (v) => p.ctrlRon = v),
+        _ohmPick('DRAM Ron (reads)', p.dramRon, std.dramRonOptions, (v) => p.dramRon = v),
+      ]),
+      FieldRow(children: [
+        _ohmPick(std.lp ? 'DRAM DQ ODT (writes)' : 'DRAM RTT_WR / RTT_NOM (writes)', p.odtWrite, std.dramOdtOptions, (v) => p.odtWrite = v),
+        _ohmPick('Controller ODT (reads)', p.odtRead, std.ctrlOdtOptions, (v) => p.odtRead = v),
+      ]),
+      FieldRow(children: [
+        _ohmPick('CA driver Ron', p.caRon, std.ctrlRonOptions, (v) => p.caRon = v),
+        EngField(
+          key: _k('dcio'),
+          label: 'DQ pin capacitance (each end)',
+          value: p.ioCap,
+          unit: Units.pf,
+          min: 0,
+          max: 10e-12,
+          decimals: 2,
+          onValidity: _valid('dcio'),
+          onChanged: (v) => _set(() => p.ioCap = v),
+        ),
+      ]),
+      FieldRow(children: [
+        EngField(
+          key: _k('dcdev'),
+          label: 'CA input capacitance per device',
+          value: p.deviceCap,
+          unit: Units.pf,
+          min: 0,
+          max: 10e-12,
+          decimals: 2,
+          tooltip: 'Including the package; DDR4 ≈ 0.8–1.4 pF.',
+          onValidity: _valid('dcdev'),
+          onChanged: (v) => _set(() => p.deviceCap = v),
+        ),
+        EngField(
+          key: _k('dtr'),
+          label: 'Edge time 20–80 % (0 = auto)',
+          value: p.riseTime,
+          unit: Units.ps,
+          min: 0,
+          max: 1e-9,
+          decimals: 1,
+          tooltip: 'Automatic: 0.3 UI (${secs(p.edge)} now).',
+          onValidity: _valid('dtr'),
+          onChanged: (v) => _set(() => p.riseTime = v),
+        ),
+      ]),
+      FieldRow(children: [
+        EngField(
+          key: _k('djit'),
+          label: 'Write TX jitter (0 = 0.2 UI)',
+          value: p.jitter,
+          unit: Units.ps,
+          min: 0,
+          max: 1e-9,
+          decimals: 1,
+          tooltip: 'Controller output jitter + crosstalk allowance, pk-pk.',
+          onValidity: _valid('djit'),
+          onChanged: (v) => _set(() => p.jitter = v),
+        ),
+        EngField(
+          key: _k('djitr'),
+          label: 'Read DRAM uncertainty (0 = 0.25 UI)',
+          value: p.jitterRead,
+          unit: Units.ps,
+          min: 0,
+          max: 1e-9,
+          decimals: 1,
+          tooltip: '≈ 1 − tQH of the DRAM, pk-pk.',
+          onValidity: _valid('djitr'),
+          onChanged: (v) => _set(() => p.jitterRead = v),
+        ),
+      ]),
+      FieldRow(children: [
+        EngField(
+          key: _k('dz0'),
+          label: 'Single-ended target',
+          value: p.targetZ0,
+          unit: Units.ohm,
+          min: 20,
+          max: 100,
+          decimals: 1,
+          onValidity: _valid('dz0'),
+          onChanged: (v) => _set(() => p.targetZ0 = v),
+        ),
+        EngField(
+          key: _k('dzd'),
+          label: 'DQS / CK differential target',
+          value: p.targetZdiff,
+          unit: Units.ohm,
+          min: 40,
+          max: 150,
+          decimals: 1,
+          onValidity: _valid('dzd'),
+          onChanged: (v) => _set(() => p.targetZdiff = v),
+        ),
+      ]),
+      _subhead('Receiver masks (approximate reference values – check the DRAM datasheet)'),
+      FieldRow(children: [
+        EngField(
+          key: _k('dmdv'),
+          label: 'DQ mask height',
+          value: p.dqMaskV ?? ref.dq.height,
+          unit: _mv,
+          min: 1e-3,
+          max: 1,
+          decimals: 1,
+          tooltip: ref.dq.source,
+          onValidity: _valid('dmdv'),
+          onChanged: (v) => _set(() => p.dqMaskV = (v - ref.dq.height).abs() < 1e-6 ? null : v),
+        ),
+        EngField(
+          key: _k('dmdt'),
+          label: 'DQ mask width',
+          value: p.dqMaskT ?? ref.dq.width,
+          unit: Units.ps,
+          min: 0,
+          max: 2e-9,
+          decimals: 1,
+          onValidity: _valid('dmdt'),
+          onChanged: (v) => _set(() => p.dqMaskT = (v - ref.dq.width).abs() < 1e-15 ? null : v),
+        ),
+      ]),
+      FieldRow(children: [
+        EngField(
+          key: _k('dmcv'),
+          label: 'CA mask height',
+          value: p.caMaskV ?? ref.ca.height,
+          unit: _mv,
+          min: 1e-3,
+          max: 1,
+          decimals: 1,
+          tooltip: ref.ca.source,
+          onValidity: _valid('dmcv'),
+          onChanged: (v) => _set(() => p.caMaskV = (v - ref.ca.height).abs() < 1e-6 ? null : v),
+        ),
+        if (!std.lp) ...[
+          EngField(
+            key: _k('dmcs'),
+            label: 'CA setup tIS',
+            value: p.caSetup ?? ref.ca.setup ?? ref.ca.width / 2,
+            unit: Units.ps,
+            min: 0,
+            max: 2e-9,
+            decimals: 1,
+            onValidity: _valid('dmcs'),
+            onChanged: (v) => _set(() => p.caSetup = (v - (ref.ca.setup ?? 0)).abs() < 1e-15 ? null : v),
+          ),
+          EngField(
+            key: _k('dmch'),
+            label: 'CA hold tIH',
+            value: p.caHold ?? ref.ca.hold ?? ref.ca.width / 2,
+            unit: Units.ps,
+            min: 0,
+            max: 2e-9,
+            decimals: 1,
+            onValidity: _valid('dmch'),
+            onChanged: (v) => _set(() => p.caHold = (v - (ref.ca.hold ?? 0)).abs() < 1e-15 ? null : v),
+          ),
+        ],
+      ]),
+      if (p.dqMaskV != null || p.dqMaskT != null || p.caMaskV != null || p.caSetup != null || p.caHold != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('Use the reference masks'),
+            onPressed: () => _set(() {
+              p.dqMaskV = p.dqMaskT = p.caMaskV = p.caSetup = p.caHold = null;
+              c.draftRevision++;
+            }),
+          ),
+        ),
+    ]);
   }
 
   Widget _spiConfig() {
@@ -1609,6 +1947,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
         Protocol.rgmii => 'R_drv ${ohm(cfg.rgmii.driverImpedance)} + ${ohm(cfg.rgmii.seriesR)} series',
         Protocol.usb2 =>
           'R_drv ${ohm(cfg.usb2.driverImpedance)} · RX term ${cfg.usb2.rxTermEnabled ? ohm(cfg.usb2.rxTermR) : 'off'}',
+        Protocol.ddr => 'Ron ${ohm(cfg.ddr.ctrlRon)} / ${ohm(cfg.ddr.dramRon)} · ODT W ${ohm(cfg.ddr.odtWrite)} / R ${ohm(cfg.ddr.odtRead)}',
         _ => 'TX ${volts(cfg.serdes.txSwingPp)} p-p · '
             '${cfg.serdes.ctleEnabled ? 'CTLE' : 'no CTLE'}${cfg.serdes.dfeTaps > 0 ? ' + ${cfg.serdes.dfeTaps}-tap DFE' : ''}',
       },
@@ -1645,6 +1984,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
           Protocol.rgmii => _rgmiiDriver(),
           Protocol.usb2 => _usbDriver(),
           Protocol.usb3 || Protocol.pcie || Protocol.hdmi => _serdesDriver(),
+          Protocol.ddr => _ddrDriver(),
         },
       ]),
     );
@@ -1946,6 +2286,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
       Protocol.rgmii => cfg.rgmii.riseTime < cfg.rgmii.fallTime ? cfg.rgmii.riseTime : cfg.rgmii.fallTime,
       Protocol.usb2 => cfg.usb2.riseTime < cfg.usb2.fallTime ? cfg.usb2.riseTime : cfg.usb2.fallTime,
       Protocol.usb3 || Protocol.pcie || Protocol.hdmi => cfg.serdes.riseTime / 2, // SerDes uses edge/20
+      Protocol.ddr => cfg.ddr.edge,
     };
     final dur = switch (cfg.protocol) {
       Protocol.spi => (s.numBits + 3) / cfg.spiCfg.clockHz,
@@ -1954,6 +2295,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
       Protocol.rgmii => (s.numBits + 4) / cfg.rgmii.speed.clockHz / (cfg.rgmii.speed.ddr ? 2 : 1),
       Protocol.usb2 => (s.numBits + 8) / cfg.usb2.speed.bitRate,
       Protocol.usb3 || Protocol.pcie || Protocol.hdmi => (s.numBits + 10) / cfg.serdesRate,
+      Protocol.ddr => (s.numBits + 9) * cfg.ddr.ui,
     };
     return SectionCard(
       title: 'E · Simulation configuration',

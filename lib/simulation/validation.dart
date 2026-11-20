@@ -151,6 +151,35 @@ List<ValidationIssue> validateConfig(AnalysisConfig c) {
     }
     if (!(p.txSkew >= 0 && p.setupTime >= 0 && p.holdTime >= 0)) err('Timing', 'Skew, setup and hold must be >= 0.');
     if (!(c.sim.numBits >= 4 && c.sim.numBits <= 512)) err('Bits', 'RGMII pattern must be 4-512 bits.');
+  } else if (c.protocol == Protocol.ddr) {
+    final p = c.ddr;
+    if (!p.standard.rates.contains(p.rate) && !(p.rate >= 400 && p.rate <= 6400)) {
+      err('Data rate', 'Use 400 – 6400 MT/s.');
+    } else if (!p.standard.rates.contains(p.rate)) {
+      warn('Data rate', '${p.rate} MT/s is not a standard ${p.standard.label} speed bin; the nearest lower bin\'s mask is used.');
+    }
+    for (final (f, v) in [('Controller Ron', p.ctrlRon), ('DRAM Ron', p.dramRon), ('Write ODT', p.odtWrite), ('Read ODT', p.odtRead), ('CA Ron', p.caRon)]) {
+      if (!(v >= 10 && v <= 1000)) err(f, 'Must be 10 Ω – 1 kΩ.');
+    }
+    if (!(p.ioCap >= 0 && p.ioCap <= 10e-12)) err('Pin capacitance', 'Must be 0 – 10 pF.');
+    if (!(p.deviceCap >= 0 && p.deviceCap <= 10e-12)) err('Device capacitance', 'Must be 0 – 10 pF.');
+    if (!(p.devices >= 1 && p.devices <= 16)) err('Devices', '1 – 16 devices.');
+    if (p.standard.lp && p.devices > 2) warn('Devices', 'LPDDR4 channels have one or two dies; ${p.devices} is modelled as 2.');
+    if (!(p.leadIn > 1e-3 && p.leadIn <= 0.5)) err('CA lead-in', 'Must be 1 – 500 mm.');
+    if (!(p.leadIn - p.caClkMismatch > 1e-3)) err('CA − CK length', 'The CK lead-in must stay longer than 1 mm.');
+    if (p.devices > 1 && !(p.spacing >= 1e-3 && p.spacing <= 0.1)) err('Device spacing', 'Must be 1 – 100 mm.');
+    if (!(p.stub >= 0.2e-3 && p.stub <= 30e-3)) err('Stub length', 'Must be 0.2 – 30 mm.');
+    if (p.standard.caTopology == CaTopology.flyBy && !(p.vttR >= 10 && p.vttR <= 200)) err('VTT resistor', 'Must be 10 – 200 Ω.');
+    if (p.standard.lp && !(p.caOdt >= 20 && p.caOdt <= 1000)) err('CA ODT', 'Must be 20 Ω – 1 kΩ.');
+    if (p.riseTime != 0 && !(p.riseTime > 10e-12 && p.riseTime < 0.6 * p.ui)) err('Edge time', 'Must be 10 ps – 0.6 UI (0 = automatic).');
+    if (!(p.jitter >= 0 && p.jitter < p.ui) || !(p.jitterRead >= 0 && p.jitterRead < p.ui)) err('Jitter', 'Must be 0 – 1 UI (0 = automatic).');
+    for (final (f, v) in [('DQ mask height', p.dqMaskV), ('CA mask height', p.caMaskV)]) {
+      if (v != null && !(v > 0 && v < p.vddq)) err(f, 'Must be between 0 and VDDQ.');
+    }
+    for (final (f, v) in [('DQ mask width', p.dqMaskT), ('CA setup', p.caSetup), ('CA hold', p.caHold)]) {
+      if (v != null && !(v >= 0 && v < 2 * p.tck)) err(f, 'Must be 0 – 2 tCK.');
+    }
+    if (!(c.sim.numBits >= 32 && c.sim.numBits <= 1024)) err('Bits', 'DDR pattern must be 32 – 1024 bits.');
   } else if (c.protocol == Protocol.usb2) {
     final p = c.usb2;
     final ui = 1 / p.speed.bitRate;

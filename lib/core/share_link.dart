@@ -21,7 +21,7 @@ class ShareLink {
   final bool modelsDropped;
 }
 
-const _protocolKeys = ['spi', 'usb2', 'usb3', 'pcie', 'hdmi', 'qspi', 'i2c', 'rgmii'];
+const _protocolKeys = ['spi', 'usb2', 'usb3', 'pcie', 'hdmi', 'qspi', 'i2c', 'rgmii', 'ddr'];
 
 String _key(Protocol p) => switch (p) {
       Protocol.spi => 'spi',
@@ -32,6 +32,7 @@ String _key(Protocol p) => switch (p) {
       Protocol.qspi => 'qspi',
       Protocol.i2c => 'i2c',
       Protocol.rgmii => 'rgmii',
+      Protocol.ddr => 'ddr',
     };
 
 /// Builds a link to [baseUrl] that reopens [c].

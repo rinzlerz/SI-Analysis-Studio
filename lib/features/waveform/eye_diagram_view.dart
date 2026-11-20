@@ -132,7 +132,14 @@ class _EyePainter extends CustomPainter {
     // Mask (hexagon) overlay.
     if (eye.maskHeight != null && eye.maskWidth != null) {
       final w = eye.maskWidth! / eye.ui, h = eye.maskHeight!;
-      final pts = [
+      final pts = eye.maskRect
+          ? [
+              Offset(px(-w / 2), py(h / 2)),
+              Offset(px(w / 2), py(h / 2)),
+              Offset(px(w / 2), py(-h / 2)),
+              Offset(px(-w / 2), py(-h / 2)),
+            ]
+          : [
         Offset(px(-w / 2), py(0)),
         Offset(px(-w / 4), py(h / 2)),
         Offset(px(w / 4), py(h / 2)),

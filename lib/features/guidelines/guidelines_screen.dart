@@ -224,6 +224,10 @@ class _GuidelinesScreenState extends State<GuidelinesScreen> {
           caption('Cross-section of the routing layer'),
           FigureView(topViewFigure(f, pal), maxHeight: f.lineLengths != null ? 560 : 300),
           caption(f.kind == FigureKind.i2c ? 'Bus topology and pull-ups' : 'Routing rules (top view)'),
+          if (flyByFigure(f, pal) case final fb?) ...[
+            FigureView(fb, maxHeight: 300),
+            caption('Command/address fly-by with VTT termination'),
+          ],
           if (via != null) ...[
             FigureView(via, maxHeight: 290),
             caption('Via stub: the unused barrel below the exit layer resonates at high data rates'),

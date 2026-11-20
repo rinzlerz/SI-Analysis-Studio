@@ -72,6 +72,21 @@ class LayerWidth {
 /// What the top-view figure shows.
 enum FigureKind { diffPair, bus, i2c }
 
+/// DDR command/address fly-by, for the fly-by figure.
+class FlyByPlan {
+  const FlyByPlan({
+    required this.devices,
+    required this.leadIn,
+    required this.spacing,
+    required this.stub,
+    required this.stubMax,
+    required this.vttR,
+    required this.zLoaded,
+  });
+  final int devices;
+  final double leadIn, spacing, stub, stubMax, vttR, zLoaded;
+}
+
 /// Board cross-section along a via, for the via-stub figure.
 class ViaPlan {
   ViaPlan({
@@ -111,6 +126,7 @@ class GuidelineFigures {
     this.lineLengths,
     this.lineOut,
     this.groupStarts = const [],
+    this.flyBy,
     this.leftLabel = 'Driver',
     this.rightLabel = 'Receiver',
     this.acCaps = false,
@@ -140,6 +156,9 @@ class GuidelineFigures {
 
   /// Indices in [signalNames] where a new signal group starts (e.g. RX).
   final List<int> groupStarts;
+
+  /// DDR3/DDR4 command/address fly-by (null otherwise).
+  final FlyByPlan? flyBy;
   final String leftLabel, rightLabel;
   final bool acCaps;
   final double? spacing;
@@ -317,6 +336,7 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
   final notes = <GuidelineItem>[];
   String summary;
   double? figSpacing, figRs, figCritical, figRpMin, figRpMax, figStubMax;
+  FlyByPlan? figFlyBy;
   var figNames = <String>[];
 
   double critical(double tr) => tr / 6 / tpd;
@@ -456,6 +476,70 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
           'and enable exactly one 2 ns clock delay per direction.';
 
     // ------------------------------------------------------------------ USB 2.0
+    // ------------------------------------------------------------------- DDR
+    case Protocol.ddr:
+      final s = cfg.ddr;
+      final std = s.standard;
+      final ui = s.ui;
+      final fNyq = 0.5 / ui;
+      final perBit = s.training == DdrTraining.perBit;
+      // DQ-to-DQS: 5 % UI with per-byte training (10 % with per-bit deskew).
+      skewMax = (perBit ? 0.10 : 0.05) * ui / tpd;
+      final pairSkew = math.min(0.01 * ui / tpd, 0.25e-3);
+      final caSkew = 0.05 * s.tck / tpd;
+      final lossLen = 2.0 / dbPerM(fNyq);
+      lengthMax = math.min(lossLen, std.lp ? 0.06 : 0.1);
+      final flyBy = std.caTopology == CaTopology.flyBy;
+      final loadF = flyBy && s.devices > 1 ? math.sqrt(1 + s.deviceCap / (cPerM * s.spacing)) : 1.0;
+      final zLoaded = imp.z0 / loadF;
+      final stubMax = s.edge / 10 / tpd;
+      final spanMax = 1.5 * s.tck / (tpd * loadF);
+      // 80 Ω differential pairs (DQS, CK) on the same layer.
+      final wd = solveWidthForTarget(g, s.targetZdiff, spacing: gap, diffModel: model);
+      geomItems.add(GuidelineItem('DQS± and CK± pairs', wd == null ? 'cannot reach ${ohm(s.targetZdiff)}' : '${_len(wd)} wide, ${_len(gap)} gap',
+          '${ohm(s.targetZdiff)} differential on ${primary.name}', important: true));
+      routing.add(GuidelineItem('Byte lane: DQ0–7 / DM to DQS', '± ${_len(skewMax)}',
+          '${perBit ? '10' : '5'} % of the ${secs(ui)} UI (${perBit ? 'per-bit deskew' : 'per-byte training'}); route each byte on one layer',
+          important: true));
+      routing.add(GuidelineItem('DQS+ to DQS−, CK+ to CK−', '± ${_len(pairSkew)}', '1 % UI, at most 0.25 mm'));
+      routing.add(GuidelineItem('Byte-lane length', '≤ ${_len(lengthMax)}',
+          'About 2 dB loss at ${eng(fNyq, 'Hz')} (${_len(lossLen)}), capped at a practical ${std.lp ? '60' : '100'} mm',
+          important: true));
+      routing.add(GuidelineItem('Byte lane to byte lane', 'No matching needed', 'Write leveling and read training are per byte'));
+      if (flyBy) {
+        routing.add(GuidelineItem('CA / CTRL to CK', '± ${_len(caSkew)}', '5 % of tCK (${secs(s.tck)}); keep the whole CA group on the same fly-by path',
+            important: true));
+        routing.add(GuidelineItem('CK vs DQS at each DRAM', 'CK longer than DQS',
+            'Write leveling can only delay DQS, so CK must arrive after DQS at every device', important: true));
+        routing.add(GuidelineItem('Fly-by span (first → last device)', '≤ ${_len(spanMax)}',
+            '≈ 1.5 tCK of loaded delay – check the controller\'s write-leveling range'));
+        routing.add(GuidelineItem('Device spacing and stubs', 'Uniform spacing; stubs ≤ ${_len(stubMax)}',
+            'Stubs below edge/10 stay lumped; ${eng(s.deviceCap, 'F')} per device lowers the line to ≈ ${ohm(zLoaded)}'));
+        routing.add(GuidelineItem('VTT termination', '≈ ${ohm(zLoaded)} to VTT, within 10 mm after the last device',
+            'Loaded fly-by impedance (36–40 Ω is common to limit VTT current); one 0.1 µF VTT decoupling capacitor per 2 resistors',
+            important: true));
+      } else {
+        routing.add(GuidelineItem('CA to CK', '± ${_len(caSkew)}', '5 % of tCK; CA is trained (command bus training)'));
+        routing.add(GuidelineItem('CA topology', 'Point to point, on-die CA ODT', 'No VTT resistors on LPDDR4'));
+      }
+      routing.add(GuidelineItem('ODT / drive', 'Write ODT ${ohm(s.odtWrite)}, read ODT ${ohm(s.odtRead)}, Ron ${ohm(s.ctrlRon)} / ${ohm(s.dramRon)}',
+          'Run the analysis: it sweeps the ODT values and recommends the best one'));
+      final sDq = spacingFor(0.02);
+      figSpacing = sDq.isNaN ? null : sDq;
+      spacing.add(GuidelineItem('DQ to DQ within a byte', spacingText(sDq), 'Kb ≤ 2 %', important: true));
+      spacing.add(GuidelineItem('Byte to byte, DQ to CA', '≥ ${_len(spacingFor(0.01))}', 'Kb ≤ 1 %'));
+      spacing.add(GuidelineItem('DQS / CK pairs to other nets', '≥ ${_len(spacingFor(0.005))}', 'Kb ≤ 0.5 %: strobes and clocks set the timing'));
+      viaMax = 2;
+      vias.add(GuidelineItem('Vias per DQ net', '≤ 2, same count in the whole byte', 'Each via adds ≈ 5–10 ps and a small reflection'));
+      vias.add(GuidelineItem('Reference planes', 'Route the byte lane over one solid GND plane; GND via next to each layer change',
+          'Return-path discontinuities add crosstalk and SSO noise'));
+      figNames = ['DQS', 'DQ0', 'DQ1', 'DQ2 … DQ7', 'DM'];
+      figFlyBy = flyBy
+          ? FlyByPlan(devices: s.devices, leadIn: s.leadIn, spacing: s.spacing, stub: s.stub, stubMax: stubMax, vttR: s.vttR, zLoaded: zLoaded)
+          : null;
+      summary = '${std.label}-${s.rate}: ${_len(w)} traces (${ohm(target)}), match DQ to DQS within ± ${_len(skewMax)}, '
+          '${flyBy ? 'CA to CK within ± ${_len(caSkew)}, CK longer than DQS at every DRAM, VTT ≈ ${ohm(zLoaded)}' : 'point-to-point CA'}.';
+
     case Protocol.usb2:
       final u = cfg.usb2;
       final rate = u.speed.bitRate;
@@ -648,6 +732,7 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
     leftLabel: switch (p) {
       Protocol.spi || Protocol.qspi || Protocol.i2c => 'Controller',
       Protocol.rgmii => 'MAC',
+      Protocol.ddr => 'Controller',
       Protocol.usb2 => 'USB host',
       Protocol.hdmi => 'Source',
       _ => 'TX',
@@ -657,6 +742,7 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
       Protocol.qspi => 'Flash',
       Protocol.i2c => 'Targets',
       Protocol.rgmii => 'PHY',
+      Protocol.ddr => 'DRAM',
       Protocol.usb2 || Protocol.hdmi => 'Connector',
       _ => 'RX',
     },
@@ -664,7 +750,8 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
     spacing: figSpacing != null && figSpacing.isFinite ? figSpacing : null,
     lengthMax: lengthMax,
     matching: skewMax,
-    matchingLabel: diff ? 'P/N' : (p == Protocol.rgmii ? 'CLK–data' : (p == Protocol.i2c ? '' : 'match')),
+    matchingLabel: diff ? 'P/N' : (p == Protocol.rgmii ? 'CLK–data' : (p == Protocol.i2c ? '' : (p == Protocol.ddr ? 'DQ–DQS' : 'match'))),
+    flyBy: figFlyBy,
     seriesR: figRs,
     criticalLength: figCritical,
     rpMin: figRpMin,
@@ -692,6 +779,7 @@ String _netName(Protocol p) => switch (p) {
       Protocol.usb3 => '/USB3_TX',
       Protocol.pcie => '/PCIE_TX0',
       Protocol.hdmi => '/HDMI_D0',
+      Protocol.ddr => '/DDR_DQ*',
     };
 
 /// Plain-text version for sharing / clipboard.

@@ -76,6 +76,16 @@ String buildTextReport(String name, SimulationResult r) {
     b.writeln('Clock delay TX ${secs(p.txClockDelay)}, RX ${secs(p.rxClockDelay)}; clock trace '
         '${mm(p.clockExtraLength)} longer than data; TskewT ±${secs(p.txSkew)}, '
         'setup ${secs(p.setupTime)}, hold ${secs(p.holdTime)}');
+  } else if (c.protocol == Protocol.ddr) {
+    final p = c.ddr;
+    b.writeln('${p.standard.label}-${p.rate}, VDDQ ${p.vddq} V, ${p.training == DdrTraining.perBit ? 'per-bit deskew' : 'per-byte training'}');
+    b.writeln('Ron controller ${ohm(p.ctrlRon)} / DRAM ${ohm(p.dramRon)}; ODT write ${ohm(p.odtWrite)} / read ${ohm(p.odtRead)}; '
+        'pin C ${eng(p.ioCap, 'F')}; edge ${secs(p.edge)}');
+    b.writeln(p.standard.caTopology == CaTopology.flyBy
+        ? 'CA fly-by: ${p.devices} devices, lead-in ${mm(p.leadIn)}, spacing ${mm(p.spacing)}, stub ${mm(p.stub)}, '
+            '${eng(p.deviceCap, 'F')}/device, VTT ${ohm(p.vttR)}, CA − CK ${mm(p.caClkMismatch)}${p.twoT ? ', 2T' : ''}'
+        : 'CA point to point: ${mm(p.leadIn)}, ${p.devices} die(s), CA ODT ${ohm(p.caOdt)}');
+    b.writeln('Targets ${ohm(p.targetZ0)} single-ended / ${ohm(p.targetZdiff)} differential');
   } else {
     final p = c.usb2;
     b.writeln('USB 2.0 ${p.speed.label}; tr/tf ${secs(p.riseTime)} / ${secs(p.fallTime)}');

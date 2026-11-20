@@ -51,6 +51,7 @@ Future<Uint8List> buildGuidelinesPdf(LayoutGuidelines g) async {
         pw.Header(level: 1, text: 'Diagrams'),
         fig(crossSectionFigure(figs, FigPalette.light), 170),
         fig(topViewFigure(figs, FigPalette.light), 420),
+        if (flyByFigure(figs, FigPalette.light) case final fb?) fig(fb, 230),
         if (viaStubFigure(figs, FigPalette.light) case final via?) fig(via, 200),
       ],
       pw.Header(level: 1, text: 'Trace width per routing layer'),

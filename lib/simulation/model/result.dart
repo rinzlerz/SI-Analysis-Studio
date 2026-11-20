@@ -177,6 +177,9 @@ class EyeResult {
   double? maskHeight;
   double? maskWidth;
   int? maskHits;
+
+  /// Rectangular mask (DDR receiver masks) instead of the hexagon.
+  bool maskRect = false;
   int? maskSamples;
 
   /// Bathtub: sampling offset from the eye centre (s) and log10(BER).

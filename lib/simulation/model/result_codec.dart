@@ -45,6 +45,7 @@ Map<String, Object?> _eye(EyeResult e) => {
       if (e.maskHeight != null) 'mh': _d(e.maskHeight!),
       if (e.maskWidth != null) 'mw': _d(e.maskWidth!),
       if (e.maskHits != null) 'hits': e.maskHits,
+      if (e.maskRect) 'rect': true,
       if (e.maskSamples != null) 'msamp': e.maskSamples,
       if (e.bathtubPhase != null) 'btp': _f64(e.bathtubPhase!),
       if (e.bathtubLog10Ber != null) 'btb': _f64(e.bathtubLog10Ber!),
@@ -73,6 +74,7 @@ EyeResult _readEye(Map<String, Object?> j) {
   e.maskHeight = _rdn(j['mh']);
   e.maskWidth = _rdn(j['mw']);
   e.maskHits = (j['hits'] as num?)?.toInt();
+  e.maskRect = j['rect'] == true;
   e.maskSamples = (j['msamp'] as num?)?.toInt();
   if (j['btp'] != null) e.bathtubPhase = _rf64(j['btp']);
   if (j['btb'] != null) e.bathtubLog10Ber = _rf64(j['btb']);

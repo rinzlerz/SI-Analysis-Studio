@@ -27,7 +27,8 @@ class BusGroup {
   List<BusSignal> get all => [clock, ...data, ...other];
 }
 
-bool supportsSignalLengths(Protocol p) => p == Protocol.spi || p == Protocol.qspi || p == Protocol.rgmii;
+bool supportsSignalLengths(Protocol p) =>
+    p == Protocol.spi || p == Protocol.qspi || p == Protocol.rgmii || p == Protocol.ddr;
 
 List<BusGroup> busGroups(AnalysisConfig c) {
   switch (c.protocol) {
@@ -53,6 +54,11 @@ List<BusGroup> busGroups(AnalysisConfig c) {
             [for (var i = 0; i < 4; i++) BusSignal('${d}D$i', SignalRole.data), BusSignal('${d}_CTL', SignalRole.data)],
           );
       return [g('TX'), g('RX')];
+    case Protocol.ddr:
+      return [
+        BusGroup('Byte lane', const BusSignal('DQS', SignalRole.strobe),
+            [for (var i = 0; i < 8; i++) BusSignal('DQ$i', SignalRole.data), const BusSignal('DM', SignalRole.data)]),
+      ];
     default:
       return const [];
   }
@@ -63,11 +69,13 @@ List<BusSignal> busSignals(AnalysisConfig c) => [for (final g in busGroups(c)) .
 bool perSignalOn(AnalysisConfig c) => switch (c.protocol) {
       Protocol.spi || Protocol.qspi => c.spiCfg.perSignalLengths,
       Protocol.rgmii => c.rgmii.perSignalLengths,
+      Protocol.ddr => c.ddr.perSignalLengths,
       _ => false,
     };
 
 Map<String, double> _store(AnalysisConfig c) => switch (c.protocol) {
       Protocol.rgmii => c.rgmii.signalLengths,
+      Protocol.ddr => c.ddr.signalLengths,
       _ => c.spiCfg.signalLengths,
     };
 
@@ -99,6 +107,8 @@ void setPerSignal(AnalysisConfig c, bool on) {
   }
   if (c.protocol == Protocol.rgmii) {
     c.rgmii.perSignalLengths = on;
+  } else if (c.protocol == Protocol.ddr) {
+    c.ddr.perSignalLengths = on;
   } else {
     c.spiCfg.perSignalLengths = on;
   }

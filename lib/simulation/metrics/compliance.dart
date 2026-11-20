@@ -57,7 +57,8 @@ List<ComplianceCheck> complianceChecks(
   switch (cfg.protocol) {
     case Protocol.i2c:
     case Protocol.rgmii:
-      break; // Protocol checks are produced by the I2C / RGMII engines.
+    case Protocol.ddr:
+      break; // Protocol checks are produced by the I2C / RGMII / DDR engines.
     case Protocol.spi:
     case Protocol.qspi:
       final p = cfg.spiCfg;

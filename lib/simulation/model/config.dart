@@ -4,8 +4,13 @@
 /// display units (mil, mm, ns, pF, MHz ...).
 library;
 
+import 'dart:math' as math;
+
+export 'ddr_config.dart';
+import 'ddr_config.dart';
 import '../common/format.dart';
 import '../common/physics.dart';
+import '../impedance/impedance.dart';
 import '../ibis/ibis.dart';
 import '../sparams/touchstone.dart';
 
@@ -13,7 +18,7 @@ import '../sparams/touchstone.dart';
 /// results can be traced back to the equations that produced them.
 const String simulationModelVersion = 'SIM-1.3.0';
 
-enum Protocol { usb2, usb3, pcie, hdmi, spi, qspi, i2c, rgmii }
+enum Protocol { usb2, usb3, pcie, hdmi, spi, qspi, i2c, rgmii, ddr }
 
 extension ProtocolInfo on Protocol {
   String get label => switch (this) {
@@ -25,6 +30,7 @@ extension ProtocolInfo on Protocol {
         Protocol.qspi => 'QSPI / Octal SPI',
         Protocol.i2c => 'I²C',
         Protocol.rgmii => 'Ethernet RGMII',
+        Protocol.ddr => 'DDR3 / DDR4 / LPDDR4',
       };
 
   /// Short tag for compact UI (chips, avatars).
@@ -37,6 +43,7 @@ extension ProtocolInfo on Protocol {
         Protocol.qspi => 'QSPI',
         Protocol.i2c => 'I²C',
         Protocol.rgmii => 'RGMII',
+        Protocol.ddr => 'DDR',
       };
 
   /// One-line description for protocol pickers.
@@ -49,6 +56,7 @@ extension ProtocolInfo on Protocol {
         Protocol.qspi => 'Flash bus · x4 / x8 · SDR or DTR · read sample delay',
         Protocol.i2c => 'Open-drain · pull-up sizing · rise time · bus capacitance',
         Protocol.rgmii => 'Ethernet MAC–PHY · 125 MHz DDR · 2 ns clock delay',
+        Protocol.ddr => 'Memory · byte lane write/read eyes, ODT · CA fly-by, write leveling',
       };
 
   /// All protocols have a working simulation model.
@@ -1407,7 +1415,9 @@ class AnalysisConfig {
     SpiConfig? qspi,
     I2cConfig? i2c,
     RgmiiConfig? rgmii,
-  })  : usb3 = usb3 ?? SerdesConfig.usb3(),
+    DdrConfig? ddr,
+  })  : ddr = ddr ?? DdrConfig(),
+        usb3 = usb3 ?? SerdesConfig.usb3(),
         pcie = pcie ?? (SerdesConfig()..applyGenDefaults()),
         hdmi = hdmi ?? SerdesConfig.hdmi(),
         qspi = qspi ?? SpiConfig.qspi(),
@@ -1424,6 +1434,7 @@ class AnalysisConfig {
   SpiConfig qspi;
   I2cConfig i2c;
   RgmiiConfig rgmii;
+  DdrConfig ddr;
 
   /// SerDes settings of the selected protocol (USB 3.0, PCIe or HDMI).
   SerdesConfig get serdes => switch (protocol) {
@@ -1448,6 +1459,7 @@ class AnalysisConfig {
         Protocol.qspi => qspi.targetZ0,
         Protocol.i2c => i2c.targetZ0,
         Protocol.rgmii => rgmii.targetZ0,
+        Protocol.ddr => ddr.targetZ0,
         Protocol.usb2 => usb2.targetZdiff,
         Protocol.usb3 => usb3.targetZdiff,
         Protocol.pcie => pcie.targetZdiff,
@@ -1465,6 +1477,7 @@ class AnalysisConfig {
             'Rp ${ohm(i2c.pullupR)} · ${i2c.deviceCount} devices',
         Protocol.rgmii => '${rgmii.speed.label.split(' (').first} · ${rgmii.voltage} V · '
             'delay TX ${eng(rgmii.txClockDelay, 's')} / RX ${eng(rgmii.rxClockDelay, 's')}',
+        Protocol.ddr => '${ddr.standard.label}-${ddr.rate} · ${ddr.standard.caTopology == CaTopology.flyBy ? '${ddr.devices} devices fly-by' : 'point to point'} · ${ddr.vddq} V',
         Protocol.usb2 => usb2.speed.label,
         Protocol.usb3 => 'SuperSpeed 5 Gb/s · 90 Ω',
         Protocol.pcie => '${pcie.gen.label} · ${eng(pcie.gen.rate, 'T/s')} · x${pcie.lanes}',
@@ -1477,6 +1490,7 @@ class AnalysisConfig {
         Protocol.qspi => '${eng(qspi.clockHz, 'Hz')} ${qspi.dtr ? 'DTR' : 'SDR'}',
         Protocol.i2c => eng(i2c.clockHz, 'Hz'),
         Protocol.rgmii => rgmii.speed.label.split(' (').first,
+        Protocol.ddr => '${ddr.standard.label}-${ddr.rate}',
         Protocol.usb2 => usb2.speed == Usb2Speed.highSpeed ? 'HS' : 'FS',
         Protocol.usb3 => '5 Gb/s',
         Protocol.pcie => '${pcie.gen.label} x${pcie.lanes}',
@@ -1539,6 +1553,21 @@ class AnalysisConfig {
         sim.numBits = 32;
         thresholds.impedanceGoodPct = 10;
         thresholds.impedanceWarnPct = 20;
+      case Protocol.ddr:
+        // Width for the 40 Ω target on the current stackup.
+        double? w;
+        try {
+          w = solveWidthForTarget(geometryFromStackup(pcb.stackup), ddr.targetZ0);
+        } catch (_) {
+          w = null;
+        }
+        pcb.traceWidth = w != null && w > 0.05e-3 && w < 1e-3 ? (w * 1e5).round() / 1e5 : 0.2e-3;
+        pcb.traceSpacing = math.max(0.1e-3, pcb.traceWidth);
+        pcb.traceLength = 40e-3;
+        sim.pattern = DataPattern.prbs7;
+        sim.numBits = 127;
+        thresholds.impedanceGoodPct = 10;
+        thresholds.impedanceWarnPct = 15;
       case Protocol.usb3:
       case Protocol.pcie:
       case Protocol.hdmi:
@@ -1584,6 +1613,7 @@ class AnalysisConfig {
         'qspi': qspi.toJson(),
         'i2c': i2c.toJson(),
         'rgmii': rgmii.toJson(),
+        'ddr': ddr.toJson(),
         'sim': sim.toJson(),
         'thresholds': thresholds.toJson(),
       };
@@ -1602,6 +1632,7 @@ class AnalysisConfig {
       qspi: j['qspi'] is Map ? SpiConfig.fromJson(m('qspi')) : null,
       i2c: j['i2c'] is Map ? I2cConfig.fromJson(m('i2c')) : null,
       rgmii: j['rgmii'] is Map ? RgmiiConfig.fromJson(m('rgmii')) : null,
+      ddr: j['ddr'] is Map ? DdrConfig.fromJson(m('ddr')) : null,
       sim: SimSettings.fromJson(m('sim')),
       thresholds: SiThresholds.fromJson(m('thresholds')),
     );

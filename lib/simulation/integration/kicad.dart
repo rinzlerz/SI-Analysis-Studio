@@ -455,11 +455,12 @@ List<String> _aliases(String signal) {
     'MOSI' => ['MOSI', 'COPI', 'SIMO'],
     'MISO' => ['MISO', 'CIPO', 'SOMI'],
     'CS' || 'CS#' => ['CS', 'NCS', 'CSN', 'CSB', 'SS', 'NSS', 'CE'],
-    'DQS' => ['DQS', 'RWDS'],
     'TXC' => ['TXC', 'TXCLK', 'GTXCLK', 'TXCK'],
     'RXC' => ['RXC', 'RXCLK', 'RXCK'],
     'TX_CTL' => ['TXCTL', 'TXEN', 'TXCTRL'],
     'RX_CTL' => ['RXCTL', 'RXDV', 'RXCTRL'],
+    'DQS' => ['DQS0P', 'DQS0T', 'DQSP', 'DQST', 'LDQSP', 'LDQS', 'DQSLP', 'DQSL', 'DQS0', 'DQS', 'RWDS'],
+    'DM' => ['DM0', 'DMI0', 'DBI0', 'LDM', 'DML', 'DM'],
     _ => [_norm(signal)],
   };
 }

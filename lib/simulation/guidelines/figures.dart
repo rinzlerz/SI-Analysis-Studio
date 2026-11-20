@@ -484,12 +484,70 @@ Figure? lengthGaugeFigure(GuidelineFigures f, FigPalette c) {
 }
 
 /// All figures for [g] (cross-section, top view, via stub, length gauge).
+// ---------------------------------------------------------------------------
+// DDR command/address fly-by
+// ---------------------------------------------------------------------------
+
+/// Controller → lead-in → DRAMs on short stubs → VTT resistor. Null unless
+/// the sheet has a fly-by plan (DDR3 / DDR4).
+Figure? flyByFigure(GuidelineFigures f, FigPalette c) {
+  final fb = f.flyBy;
+  if (fb == null) return null;
+  const width = 640.0, height = 300.0;
+  final s = <FigShape>[];
+  const yLine = 196.0, yBox = 78.0, boxW = 54.0, boxH = 52.0;
+  _chip(s, 20, yLine - 46, 80, 92, 'Controller', c);
+  // Up to five devices are drawn; longer chains show the first three and the last.
+  final n = fb.devices;
+  final shown = n <= 5 ? [for (var i = 0; i < n; i++) i] : [0, 1, 2, -1, n - 1];
+  const x0 = 220.0, pitch = 74.0;
+  final xs = [for (var k = 0; k < shown.length; k++) x0 + k * pitch];
+  final xEnd = xs.last + 70;
+  s.add(FigLine(100, yLine, xEnd, yLine, c.copper, width: 4));
+  for (var k = 0; k < shown.length; k++) {
+    final x = xs[k];
+    if (shown[k] < 0) {
+      s.add(FigText(x, yBox + boxH / 2, '…', c.dim, size: 18, bold: true));
+      continue;
+    }
+    s.add(FigLine(x, yBox + boxH, x, yLine, c.copper, width: 3));
+    s.add(FigCircle(x, yLine, 3.5, fill: c.copper));
+    _chip(s, x - boxW / 2, yBox, boxW, boxH, 'DRAM ${shown[k] + 1}', c);
+  }
+  // Stub label and limit.
+  final stubBad = fb.stub > fb.stubMax;
+  s.add(FigText(xs.first - 8, (yBox + boxH + yLine) / 2, 'stub ≤ ${_l(fb.stubMax)}', stubBad ? c.bad : c.accent,
+      size: 10, bold: true, anchor: Anchor.end));
+  // Lead-in and spacing dimensions.
+  _dim(s, 100, yLine + 26, xs.first, yLine + 26, 'lead-in ${_l(fb.leadIn)}', c.dim, labelBelow: true);
+  if (n > 1 && shown.length > 1 && shown[1] >= 0) {
+    _dim(s, xs[0], yLine + 26, xs[1], yLine + 26, _l(fb.spacing), c.accent, labelBelow: true);
+  }
+  // VTT resistor and rail.
+  const rTop = yLine + 10, rH = 34.0;
+  s.add(FigLine(xEnd, yLine, xEnd, rTop, c.copper, width: 3));
+  s.add(FigRect(xEnd - 7, rTop, 14, rH, fill: c.box, stroke: c.accent, strokeWidth: 1.4, radius: 2));
+  s.add(FigLine(xEnd, rTop + rH, xEnd, rTop + rH + 12, c.copper, width: 2));
+  s.add(FigLine(xEnd - 22, rTop + rH + 12, xEnd + 22, rTop + rH + 12, c.warn, width: 2.5));
+  s.add(FigText(xEnd, rTop + rH + 26, 'VTT = VDDQ/2', c.warn, size: 10));
+  final rOff = (fb.vttR - fb.zLoaded).abs() / fb.zLoaded > 0.35;
+  s.add(FigText(xEnd + 14, rTop + rH / 2 - 7, 'Rtt ≈ ${ohm(fb.zLoaded)}', c.accent, size: 11, bold: true, anchor: Anchor.start));
+  s.add(FigText(xEnd + 14, rTop + rH / 2 + 8, '(now ${ohm(fb.vttR)})', rOff ? c.bad : c.dim, size: 10, anchor: Anchor.start));
+  s.add(FigText(20, 34, 'CA / CTRL / CK fly-by', c.text, size: 13, bold: true, anchor: Anchor.start));
+  s.add(FigText(20, 52, 'CK delay grows along the chain; write leveling aligns DQS to CK at each DRAM.', c.dim,
+      size: 10, anchor: Anchor.start));
+  s.add(FigText(20, height - 12, 'Schematic, not to scale. Keep stubs short and the spacing uniform; route CK with the CA group.', c.dim,
+      size: 10, anchor: Anchor.start));
+  return Figure('Fly-by', width, height, s);
+}
+
 List<Figure> guidelineFigures(LayoutGuidelines g, FigPalette c) {
   final f = g.figures;
   if (f == null) return const [];
   return [
     crossSectionFigure(f, c),
     topViewFigure(f, c),
+    if (flyByFigure(f, c) case final fb?) fb,
     if (viaStubFigure(f, c) case final v?) v,
     if (lengthGaugeFigure(f, c) case final l?) l,
   ];
