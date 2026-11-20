@@ -15,6 +15,14 @@ waveforms, SI metrics, Good / Warning / Critical status and recommendations.
 
 **Live app:** https://rinzlerz.github.io/SI-Analysis-Studio/ – rebuilt automatically from `main` by `.github/workflows/deploy-web.yml`.
 
+**Android APK:** https://github.com/rinzlerz/SI-Analysis-Studio/releases/latest – built automatically by `.github/workflows/android-apk.yml` for the version in `pubspec.yaml`.
+
+**Feedback:** https://github.com/rinzlerz/SI-Analysis-Studio/issues/new?template=feedback.yml (also from the app: Home → feedback icon, or a result's ⋮ → *Report a problem*, which pre-fills a link to that analysis).
+
+**Share links:** *Share link* on a result, or *Share these inputs* in New Analysis, creates a URL that reopens the exact analysis for anyone. The configuration travels in the URL fragment and is never uploaded. IBIS / Touchstone models are not included.
+
+**Web worker:** on the web the engine runs in `sim_worker.js`, compiled from `lib/simulation/worker/sim_worker.dart` by the Pages workflow. With `flutter run -d chrome` there is no worker, and the app falls back to the main thread.
+
 The same code also runs in a browser: there is nothing to install, so it is easy to share with testers. See **[WEB_DEPLOY.md](WEB_DEPLOY.md)** to try it locally (`flutter run -d chrome`) and publish it on GitHub Pages (automatic workflow included) or Netlify.
 
 On the web:

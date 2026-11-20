@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Open SI Studio (web)
+    url: https://rinzlerz.github.io/SI-Analysis-Studio/
+    about: Try the app in your browser.

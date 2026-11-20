@@ -1,0 +1,56 @@
+name: Feedback / problem report
+description: Tell us what worked, what didn't, or what you'd like SI Studio to do.
+title: "[Feedback] "
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying SI Studio! Fields marked with * are required. If you came from the app, version, platform and the analysis link are already filled in.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options:
+        - Result looks wrong
+        - Bug / crash / something doesn't work
+        - Suggestion / missing feature
+        - Usability (confusing screen or wording)
+        - General comment
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, and what did you see? Screenshots help a lot (paste or drag them in).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: For results, what does your simulator, measurement or rule of thumb say?
+  - type: input
+    id: protocol
+    attributes:
+      label: Protocol
+      placeholder: e.g. I²C, RGMII, PCIe
+  - type: textarea
+    id: link
+    attributes:
+      label: Analysis link
+      description: Use "Share link" in the app; it reopens your exact inputs.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: Settings → About SI Studio
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Web browser
+        - Android app

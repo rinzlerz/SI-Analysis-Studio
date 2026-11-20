@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../simulation/engine.dart';
 import '../../shared/widgets/common.dart';
 import '../../core/app_info.dart';
+import '../../shared/share_actions.dart';
 import '../about/about_screen.dart';
 import '../history/history_screen.dart';
 import 'examples.dart';

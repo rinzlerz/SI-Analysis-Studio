@@ -36,6 +36,12 @@ jobs:
       # Project sites live under /<repository-name>/.
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
 
+      # Simulation engine as a web worker, so long runs don't freeze the page.
+      - name: Build simulation web worker
+        run: |
+          dart compile js -O2 -o build/web/sim_worker.js lib/simulation/worker/sim_worker.dart
+          test -s build/web/sim_worker.js
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

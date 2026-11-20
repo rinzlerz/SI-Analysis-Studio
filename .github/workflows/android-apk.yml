@@ -1,0 +1,68 @@
+# Builds the Android APK on every push to main and attaches it to the
+# GitHub Release for the version in pubspec.yaml (e.g. v0.6.0). Pushing again
+# without changing the version replaces the APK in that release.
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: stable
+          cache: true
+
+      # Keep the same signing key between builds so testers can install
+      # updates over the previous version without uninstalling.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-test-signing-key-v1
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - id: ver
+        run: echo "version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+
+      - run: cp build/app/outputs/flutter-apk/app-release.apk "SI-Studio-${{ steps.ver.outputs.version }}.apk"
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.ver.outputs.version }}
+          commit: ${{ github.sha }}
+          name: SI Studio ${{ steps.ver.outputs.version }}
+          artifacts: SI-Studio-${{ steps.ver.outputs.version }}.apk
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          body: |
+            **Android test build** of SI Studio ${{ steps.ver.outputs.version }} (built from ${{ github.sha }}).
+
+            **Install:** download `SI-Studio-${{ steps.ver.outputs.version }}.apk` on your Android phone and open it. Allow "Install unknown apps" for your browser or Files app when asked.
+            If an older SI Studio that you built yourself is installed, uninstall it first (it is signed with a different key).
+
+            **No install needed:** the same app runs in the browser at https://rinzlerz.github.io/SI-Analysis-Studio/
+
+            Preliminary engineering analysis – not protocol compliance. Feedback: https://github.com/rinzlerz/SI-Analysis-Studio/issues/new?template=feedback.yml

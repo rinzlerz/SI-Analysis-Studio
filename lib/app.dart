@@ -6,6 +6,7 @@ import 'features/analysis_input/new_analysis_screen.dart';
 import 'features/history/history_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'shared/share_actions.dart';
 import 'shared/widgets/common.dart';
 
 class SiStudioApp extends StatelessWidget {
@@ -26,9 +27,25 @@ class SiStudioApp extends StatelessWidget {
 }
 
 /// Bottom navigation: Home, New Analysis, History, Settings (PRD 9.1).
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.controller});
   final AppController controller;
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  AppController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // Share links (web): open the analysis carried in the URL.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) openLaunchShare(context, controller);
+    });
+  }
 
   static const _destinations = [
     (Icons.home_outlined, Icons.home, 'Home'),

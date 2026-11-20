@@ -4,6 +4,7 @@ import '../../data/models/analysis_record.dart';
 import '../../data/models/app_settings.dart';
 import '../../data/models/library_item.dart';
 import '../../data/repositories/analysis_repository.dart';
+import '../../platform/simulate.dart';
 import '../../platform/storage.dart';
 import '../../simulation/common/format.dart';
 import '../../simulation/engine.dart';
@@ -193,13 +194,9 @@ class AppController extends ChangeNotifier {
   /// Runs any configuration in a background isolate (comparisons, sweeps).
   Future<SimulationResult> runConfig(AnalysisConfig cfg) => _simulate(cfg);
 
-  /// Runs the engine in a background isolate. Browsers have no isolates, so on
-  /// the web the UI first gets two frames to show its progress state before
-  /// the (usually sub-second) simulation runs on the main thread.
-  static Future<SimulationResult> _simulate(AnalysisConfig cfg) async {
-    if (kIsWeb) await Future<void>.delayed(const Duration(milliseconds: 40));
-    return compute(runAnalysisFromJson, cfg.toJson());
-  }
+  /// Runs the engine off the UI thread (isolate on Android, web worker in the
+  /// browser).
+  static Future<SimulationResult> _simulate(AnalysisConfig cfg) => simulatePlatform(cfg);
 
   /// Replaces the draft (e.g. a comparison variant opened for editing).
   void setDraft(AnalysisConfig cfg, {String? name}) {

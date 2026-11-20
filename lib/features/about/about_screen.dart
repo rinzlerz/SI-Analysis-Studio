@@ -1,19 +1,15 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/app_info.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../platform/external_link.dart';
+import '../../platform/simulate.dart' show simulationRunner;
+import '../../shared/share_actions.dart';
 import '../../platform/storage.dart' show storageDescription;
 import '../../simulation/engine.dart';
 import '../../shared/widgets/common.dart';
-
-/// Opens [feedbackUrl] (new tab on the web; copied on Android).
-Future<void> sendFeedback(BuildContext context) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final opened = await openExternal(feedbackUrl);
-  if (!opened) messenger.showSnackBar(const SnackBar(content: Text('Feedback link copied to the clipboard.')));
-}
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -45,6 +41,7 @@ class AboutScreen extends StatelessWidget {
                     Text(appName, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
                     Text('Version $appVersion · model $simulationModelVersion',
                         style: TextStyle(color: AppColors.textDim, fontSize: 13)),
+                    Text(repoUrl, style: TextStyle(color: AppColors.textDim, fontSize: 11.5)),
                   ]),
                 ),
               ]),
@@ -87,7 +84,9 @@ class AboutScreen extends StatelessWidget {
                         style: TextStyle(color: AppColors.warning)),
                   ),
                 const SizedBox(height: 6),
-                const Text('Use Export (JSON) on a result, or Libraries → export, to move data between devices.',
+                Text('Simulations run in a $simulationRunner.', style: const TextStyle(color: AppColors.textDim, fontSize: 12.5)),
+                const SizedBox(height: 4),
+                const Text('Use Share link or Export (JSON) on a result, or Libraries → export, to move data between devices.',
                     style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
               ]),
             ),
@@ -100,6 +99,11 @@ class AboutScreen extends StatelessWidget {
                     icon: const Icon(Icons.feedback_outlined),
                     label: const Text('Send feedback'),
                   ),
+                OutlinedButton.icon(
+                  onPressed: () => openExternal(kIsWeb ? releasesUrl : webAppUrl),
+                  icon: const Icon(kIsWeb ? Icons.android : Icons.public),
+                  label: const Text(kIsWeb ? 'Get the Android app' : 'Open the web version'),
+                ),
                 OutlinedButton.icon(
                   onPressed: () => showLicensePage(
                     context: context,

@@ -13,6 +13,8 @@ import '../waveform/eye_diagram_view.dart';
 import '../waveform/propagation_animation.dart';
 import '../waveform/waveform_viewer.dart';
 import 'report.dart';
+import '../../core/app_info.dart';
+import '../../shared/share_actions.dart';
 import '../integration/integration_dialogs.dart';
 
 const String _eyeView = '__eye__';
@@ -58,6 +60,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const ListTile(title: Text('Export & share', style: TextStyle(fontWeight: FontWeight.w600))),
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: const Text('Share link'),
+            subtitle: const Text('Anyone with the link opens this exact analysis in their browser'),
+            onTap: () => Navigator.pop(ctx, 'link'),
+          ),
           ListTile(
             leading: const Icon(Icons.picture_as_pdf_outlined),
             title: const Text('PDF report'),
@@ -107,6 +115,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _guard(() => ExportService.shareReport(widget.record, r, buildTextReport(widget.record.name, r)));
       case 'rules':
         exportDesignRules(context, r);
+      case 'link':
+        shareAnalysis(context, r.config, name: widget.record.name);
+      case 'problem':
+        sendFeedback(context, cfg: r.config, name: widget.record.name);
       case 'rename':
         _rename();
     }
@@ -186,9 +198,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
           IconButton(tooltip: 'Export & share', icon: const Icon(Icons.ios_share), onPressed: _exportSheet),
           PopupMenuButton<String>(
             onSelected: _menu,
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'rename', child: ListTile(leading: Icon(Icons.drive_file_rename_outline), title: Text('Rename'))),
-              PopupMenuItem(value: 'rules', child: ListTile(leading: Icon(Icons.rule_folder_outlined), title: Text('Export design rules'))),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'rename', child: ListTile(leading: Icon(Icons.drive_file_rename_outline), title: Text('Rename'))),
+              const PopupMenuItem(value: 'rules', child: ListTile(leading: Icon(Icons.rule_folder_outlined), title: Text('Export design rules'))),
+              const PopupMenuItem(value: 'link', child: ListTile(leading: Icon(Icons.link), title: Text('Share link'))),
+              if (feedbackUrl.isNotEmpty)
+                const PopupMenuItem(value: 'problem', child: ListTile(leading: Icon(Icons.bug_report_outlined), title: Text('Report a problem with this result'))),
             ],
           ),
         ],

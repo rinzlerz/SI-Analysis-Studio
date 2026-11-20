@@ -21,6 +21,7 @@ import '../../simulation/sparams/touchstone.dart';
 import 'channel_editor.dart';
 import '../../data/models/library_item.dart';
 import '../../shared/widgets/dialogs.dart';
+import '../../shared/share_actions.dart';
 import '../integration/integration_dialogs.dart';
 
 /// PRD 9.3 – guided configuration in expandable sections A–F.
@@ -155,6 +156,8 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
                       await importFromKicad(context, c);
                     case 'sweep':
                       await startSweep(context, c);
+                    case 'link':
+                      await shareAnalysis(context, cfg, name: c.draftName);
                     case 'reset':
                       await _confirmReset();
                   }
@@ -174,6 +177,14 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen> {
                       leading: Icon(Icons.stacked_line_chart),
                       title: Text('Parameter sweep'),
                       subtitle: Text('Compare several values of one input'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'link',
+                    child: ListTile(
+                      leading: Icon(Icons.link),
+                      title: Text('Share these inputs'),
+                      subtitle: Text('Link that opens this analysis for anyone'),
                     ),
                   ),
                   PopupMenuDivider(),
