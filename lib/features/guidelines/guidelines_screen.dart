@@ -9,6 +9,8 @@ import '../../simulation/integration/design_rules.dart';
 import '../../shared/export/export_service.dart';
 import '../../shared/widgets/common.dart';
 import '../../shared/widgets/eng_field.dart';
+import '../../simulation/guidelines/figures.dart';
+import 'figure_view.dart';
 import 'guidelines_pdf.dart';
 
 /// Pre-layout routing guidelines for a protocol on the current stackup.
@@ -123,6 +125,7 @@ class _GuidelinesScreenState extends State<GuidelinesScreen> {
                 ]),
               ),
             ),
+            if (g.figures != null) ..._diagrams(g),
             SectionCard(
               title: 'Trace width per layer',
               subtitle: 'For ${ohm(cfg.targetImpedance)}${cfg.protocol.differential ? ' differential, gap ${guideLength(cfg.pcb.traceSpacing)}' : ''} · '
@@ -195,6 +198,39 @@ class _GuidelinesScreenState extends State<GuidelinesScreen> {
         ),
       ),
     );
+  }
+
+  List<Widget> _diagrams(LayoutGuidelines g) {
+    final f = g.figures!;
+    const pal = FigPalette.dark;
+    final gauge = lengthGaugeFigure(f, pal);
+    final via = viaStubFigure(f, pal);
+    Widget caption(String t) => Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 10),
+          child: Text(t, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textDim, fontSize: 11.5)),
+        );
+    return [
+      if (gauge != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: FigureView(gauge, maxHeight: 90),
+        ),
+      SectionCard(
+        title: 'Diagrams',
+        subtitle: 'Drawn from this sheet\'s numbers – they update with the stackup and interface',
+        leading: const Icon(Icons.draw_outlined),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          FigureView(crossSectionFigure(f, pal), maxHeight: 260),
+          caption('Cross-section of the routing layer'),
+          FigureView(topViewFigure(f, pal), maxHeight: 300),
+          caption(f.kind == FigureKind.i2c ? 'Bus topology and pull-ups' : 'Routing rules (top view)'),
+          if (via != null) ...[
+            FigureView(via, maxHeight: 290),
+            caption('Via stub: the unused barrel below the exit layer resonates at high data rates'),
+          ],
+        ]),
+      ),
+    ];
   }
 
   Widget _item(GuidelineItem i) {

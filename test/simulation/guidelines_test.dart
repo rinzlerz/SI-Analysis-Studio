@@ -1,6 +1,7 @@
 // Layout guideline sheet.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:si_studio/simulation/engine.dart';
+import 'package:si_studio/simulation/guidelines/figures.dart';
 import 'package:si_studio/simulation/guidelines/guidelines.dart';
 import 'package:si_studio/simulation/impedance/impedance.dart';
 
@@ -65,5 +66,29 @@ void main() {
         g.sections.expand((s) => s.items).firstWhere((i) => i.label == 'Maximum via stub').value;
     double mm(String v) => double.parse(v.split(' ').first);
     expect(mm(stub(pcie(PcieGen.gen5))), lessThan(mm(stub(pcie(PcieGen.gen2)))));
+  });
+
+  test('diagrams exist for every protocol and export as SVG', () {
+    for (final p in Protocol.values) {
+      final g = computeGuidelines(AnalysisConfig.defaults(protocol: p));
+      final figs = guidelineFigures(g, FigPalette.light);
+      expect(figs.length, greaterThanOrEqualTo(2), reason: p.name);
+      expect(figs.any((f) => f.title == 'Via stub'), p.differential, reason: p.name);
+      for (final f in figs) {
+        final svg = figureToSvg(f, background: 0xFFFFFFFF);
+        expect(svg.startsWith('<svg'), isTrue);
+        expect(svg.endsWith('</svg>'), isTrue);
+        expect(f.shapes, isNotEmpty);
+      }
+    }
+  });
+
+  test('via stub reflects the routing layer', () {
+    final c = AnalysisConfig.defaults(protocol: Protocol.pcie, stackup: StackupConfig.preset(6))..pcb.stackup.signalLayer = 2;
+    final inner = computeGuidelines(c).figures!.via!;
+    expect(inner.exitLayer, 2);
+    expect(inner.stub, greaterThan(0.5e-3));
+    final top = computeGuidelines(AnalysisConfig.defaults(protocol: Protocol.pcie)).figures!.via!;
+    expect(top.stub, lessThan(1e-6));
   });
 }

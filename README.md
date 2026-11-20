@@ -28,6 +28,8 @@ waveforms, SI metrics, Good / Warning / Critical status and recommendations.
 - via count and the via-stub limit (back-drill);
 - termination.
 
+**Diagrams (v0.8):** the sheet draws its numbers. You get a length gauge (max length versus your current trace), a stackup cross-section with W/S/H dimensions, a top-view routing sketch (pair spacing, serpentine matching, AC caps, GND stitching vias; bus pitch and series R; I²C pull-ups and taps), and, for differential interfaces, a via-stub picture for the selected layer. The same figures are included in the PDF export. Figure model: `lib/simulation/guidelines/figures.dart`.
+
 Export it as a PDF, as KiCad rules + CSV, or as text. Engine: `lib/simulation/guidelines/guidelines.dart`.
 
 **Share links:** *Share link* on a result, or *Share these inputs* in New Analysis, creates a URL that reopens the exact analysis for anyone. The configuration travels in the URL fragment and is never uploaded. IBIS / Touchstone models are not included.

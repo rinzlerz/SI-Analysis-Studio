@@ -68,6 +68,79 @@ class LayerWidth {
   final bool primary;
 }
 
+/// What the top-view figure shows.
+enum FigureKind { diffPair, bus, i2c }
+
+/// Board cross-section along a via, for the via-stub figure.
+class ViaPlan {
+  ViaPlan({
+    required this.thickness,
+    required this.layerTop,
+    required this.layerT,
+    required this.roles,
+    required this.exitLayer,
+    required this.stub,
+    required this.stubMax,
+  });
+  final double thickness;
+
+  /// Depth of the top of each copper layer from the board top (m).
+  final List<double> layerTop;
+  final List<double> layerT;
+  final List<LayerRole> roles;
+
+  /// Layer where the signal leaves the via (entering from the top).
+  final int exitLayer;
+
+  /// Unused via barrel below the exit layer (m).
+  final double stub;
+  final double? stubMax;
+}
+
+/// Numbers the diagrams are drawn from.
+class GuidelineFigures {
+  GuidelineFigures({
+    required this.kind,
+    required this.geometry,
+    required this.width,
+    required this.gap,
+    required this.target,
+    required this.signalNames,
+    required this.currentLength,
+    this.leftLabel = 'Driver',
+    this.rightLabel = 'Receiver',
+    this.acCaps = false,
+    this.spacing,
+    this.lengthMax,
+    this.matching,
+    this.matchingLabel = '',
+    this.seriesR,
+    this.criticalLength,
+    this.rpMin,
+    this.rpMax,
+    this.via,
+  });
+  final FigureKind kind;
+  final TraceGeometry geometry;
+  final double width;
+  final double? gap;
+  final double target;
+  final List<String> signalNames;
+  final double currentLength;
+  final String leftLabel, rightLabel;
+  final bool acCaps;
+  final double? spacing;
+  final double? lengthMax;
+  final double? matching;
+  final String matchingLabel;
+
+  /// Series resistor when the current length needs termination.
+  final double? seriesR;
+  final double? criticalLength;
+  final double? rpMin, rpMax;
+  final ViaPlan? via;
+}
+
 class LayoutGuidelines {
   LayoutGuidelines({
     required this.config,
@@ -77,7 +150,11 @@ class LayoutGuidelines {
     required this.sections,
     required this.constraints,
     required this.assumptions,
+    this.figures,
   });
+
+  /// Data for the cross-section, top-view, via and length figures.
+  final GuidelineFigures? figures;
   final AnalysisConfig config;
   final String title;
   final String summary;
@@ -226,11 +303,15 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
   final vias = <GuidelineItem>[];
   final notes = <GuidelineItem>[];
   String summary;
+  double? figSpacing, figRs, figCritical, figRpMin, figRpMax, figStubMax;
+  var figNames = <String>[];
 
   double critical(double tr) => tr / 6 / tpd;
   GuidelineItem termination(double tr, double rDrv, {String driver = 'driver'}) {
     final lc = critical(tr);
     final rs = math.max(0.0, imp.z0 - rDrv);
+    figCritical = lc;
+    if (cfg.pcb.traceLength > lc && rs > 1) figRs = rs;
     return GuidelineItem('Termination', 'None needed below ${_len(lc)}; longer: series R ≈ ${ohm(rs)} at the $driver',
         'Critical length = tr / 6 = ${secs(tr)} / 6; series R = Z0 − R_driver (${ohm(imp.z0)} − ${ohm(rDrv)})',
         important: true);
@@ -285,6 +366,8 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
           : 'Point to point; with several peripherals, daisy-chain SCLK (no star) and keep stubs < ${_len(critical(tr) / 3)}',
           'Stubs longer than ⅓ of the critical length cause visible reflections'));
       final sXt = spacingFor(0.03);
+      figSpacing = sXt.isNaN ? null : sXt;
+      figNames = isQ ? ['CLK', 'IO0', 'IO1', 'CS#'] : ['SCLK', 'MOSI', 'MISO', 'CS'];
       spacing.add(GuidelineItem('Spacing to other signals', spacingText(sXt), 'Backward crosstalk Kb ≤ 3 % between parallel traces',
           important: true));
       spacing.add(GuidelineItem('Clock isolation', '≥ ${_len(spacingFor(0.01))} from other clocks and analog lines', 'Kb ≤ 1 %'));
@@ -313,6 +396,10 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
           rpMin <= rpMax ? '${ohm(rpMin)} – ${ohm(rpMax)}' : 'none – bus too heavy',
           'Rp min = (VDD − VOL)/IOL; Rp max = tr / (0.8473 · Cb) with Cb = ${eng(cb, 'F')}',
           important: true));
+      figRpMin = rpMin;
+      figRpMax = rpMin <= rpMax ? rpMax : null;
+      figSpacing = spacingFor(0.01);
+      figNames = ['SCL', 'SDA'];
       routing.add(GuidelineItem('Pull-up placement', 'One pair of pull-ups per bus segment, near the controller or the middle of the bus',
           'Several pull-ups in parallel lower Rp below the minimum'));
       routing.add(GuidelineItem('Width', '≥ ${_len(0.1e-3)}; impedance is not critical', 'I²C edges are slow; width only matters for capacitance'));
@@ -346,6 +433,8 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
       routing.add(GuidelineItem('Maximum length', '≈ ${_len(0.15)} practical (no hard timing limit)',
           'Clock and data travel together, so length cancels; longer runs mainly add ringing and crosstalk'));
       lengthMax = 0.15;
+      figSpacing = spacingFor(0.03);
+      figNames = ['TXC', 'TXD0', 'TXD1', 'TX_CTL'];
       spacing.add(GuidelineItem('Spacing within the group', spacingText(spacingFor(0.03)), 'Kb ≤ 3 %', important: true));
       spacing.add(GuidelineItem('TX group to RX group', '≥ ${_len(spacingFor(0.01))}', 'Kb ≤ 1 %; route the two directions apart'));
       viaMax = 2;
@@ -376,6 +465,8 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
           important: true));
       skewMax = math.min(skewMax, 1.27e-3);
       routing.add(GuidelineItem('Stubs', 'None; connect ESD and test pads in line (no branches)', 'Stubs create reflections on the 90 Ω pair'));
+      figSpacing = math.max(spacingFor(0.01), 3 * gap);
+      figNames = ['D+', 'D−'];
       spacing.add(GuidelineItem('Pair to other signals', '≥ ${_len(math.max(spacingFor(0.01), 3 * gap))}', 'Kb ≤ 1 % and ≥ 3 × pair gap',
           important: true));
       viaMax = 2;
@@ -415,6 +506,9 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
       }
       routing.add(GuidelineItem('Bends', '45° or arcs; no 90° corners; keep serpentines loose (gap ≥ 4 × W)',
           'Tight serpentines couple to themselves and speed up the signal'));
+      figSpacing = math.max(spacingFor(0.01), 3 * gap);
+      figStubMax = stubMax;
+      figNames = p == Protocol.hdmi ? ['D0+', 'D0−'] : ['TX+', 'TX−'];
       spacing.add(GuidelineItem('Pair to pair', '≥ ${_len(math.max(spacingFor(0.01), 3 * gap))}', 'Kb ≤ 1 % and ≥ 3 × pair gap',
           important: true));
       spacing.add(GuidelineItem('TX pairs to RX pairs', '≥ ${_len(math.max(spacingFor(0.005), 5 * gap))} or on different layers',
@@ -459,7 +553,65 @@ LayoutGuidelines computeGuidelines(AnalysisConfig cfg) {
     viaMax: viaMax,
     notes: ['${p.label} layout guidelines from SI Studio', summary],
   );
+  // Via plan: signal enters at the top, leaves at the routing layer (or at
+  // the bottom when routed on an outer layer).
+  ViaPlan? via;
+  if (diff) {
+    final tops = <double>[];
+    var z = 0.0;
+    for (var i = 0; i < st.layers.length; i++) {
+      tops.add(z);
+      z += st.layers[i].copperThickness;
+      if (i < st.dielectrics.length) z += st.dielectrics[i];
+    }
+    final exit = primary.index == 0 ? st.layers.length - 1 : primary.index;
+    final stub = math.max(0.0, st.totalThickness - (tops[exit] + st.layers[exit].copperThickness));
+    via = ViaPlan(
+      thickness: st.totalThickness,
+      layerTop: tops,
+      layerT: [for (final l in st.layers) l.copperThickness],
+      roles: [for (final l in st.layers) l.role],
+      exitLayer: exit,
+      stub: stub,
+      stubMax: figStubMax,
+    );
+  }
+  final figures = GuidelineFigures(
+    kind: diff ? FigureKind.diffPair : (p == Protocol.i2c ? FigureKind.i2c : FigureKind.bus),
+    geometry: g,
+    width: w,
+    gap: diff ? gap : null,
+    target: target,
+    signalNames: figNames,
+    currentLength: cfg.pcb.traceLength,
+    leftLabel: switch (p) {
+      Protocol.spi || Protocol.qspi || Protocol.i2c => 'Controller',
+      Protocol.rgmii => 'MAC',
+      Protocol.usb2 => 'USB host',
+      Protocol.hdmi => 'Source',
+      _ => 'TX',
+    },
+    rightLabel: switch (p) {
+      Protocol.spi => 'Peripheral',
+      Protocol.qspi => 'Flash',
+      Protocol.i2c => 'Targets',
+      Protocol.rgmii => 'PHY',
+      Protocol.usb2 || Protocol.hdmi => 'Connector',
+      _ => 'RX',
+    },
+    acCaps: p == Protocol.usb3 || p == Protocol.pcie,
+    spacing: figSpacing != null && figSpacing.isFinite ? figSpacing : null,
+    lengthMax: lengthMax,
+    matching: skewMax,
+    matchingLabel: diff ? 'P/N' : (p == Protocol.rgmii ? 'CLK–data' : (p == Protocol.i2c ? '' : 'match')),
+    seriesR: figRs,
+    criticalLength: figCritical,
+    rpMin: figRpMin,
+    rpMax: figRpMax,
+    via: via,
+  );
   return LayoutGuidelines(
+    figures: figures,
     config: cfg,
     title: '${p.label} layout guidelines',
     summary: summary,

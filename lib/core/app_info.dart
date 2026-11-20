@@ -4,7 +4,7 @@ library;
 const String appName = 'SI Studio';
 
 /// Keep in step with `version:` in pubspec.yaml.
-const String appVersion = '0.7.0';
+const String appVersion = '0.8.0';
 
 /// Source repository.
 const String repoUrl = 'https://github.com/rinzlerz/SI-Analysis-Studio';

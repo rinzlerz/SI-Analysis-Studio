@@ -7,6 +7,7 @@ import '../../core/app_info.dart';
 import '../../shared/export/pdf_text.dart';
 import '../../simulation/common/format.dart';
 import '../../simulation/engine.dart';
+import '../../simulation/guidelines/figures.dart';
 import '../../simulation/guidelines/guidelines.dart';
 
 /// One-to-two page PDF of the layout guidelines, for design reviews and the
@@ -20,6 +21,12 @@ Future<Uint8List> buildGuidelinesPdf(LayoutGuidelines g) async {
   final bold = pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold);
   final c = g.config;
   final st = c.pcb.stackup;
+  pw.Widget fig(Figure f, double height) => pw.Container(
+        height: height,
+        margin: const pw.EdgeInsets.symmetric(vertical: 4),
+        child: pw.SvgImage(svg: figureToSvg(f, background: 0xFFFFFFFF, textMap: pdfSafe)),
+      );
+  final figs = g.figures;
   final doc = pw.Document(title: pdfSafe('SI Studio - ${g.title}'), author: appName);
   doc.addPage(pw.MultiPage(
     pageFormat: PdfPageFormat.a4,
@@ -38,6 +45,13 @@ Future<Uint8List> buildGuidelinesPdf(LayoutGuidelines g) async {
               '${(st.totalThickness * 1e3).toStringAsFixed(2)} mm, Dk ${st.dk}, Df ${st.df}. '
               'Target ${ohm(c.targetImpedance)}${c.protocol.differential ? ' differential, gap ${guideLength(c.pcb.traceSpacing)}' : ''}.'),
           style: small),
+      if (figs != null) ...[
+        if (lengthGaugeFigure(figs, FigPalette.light) case final gauge?) fig(gauge, 55),
+        pw.Header(level: 1, text: 'Diagrams'),
+        fig(crossSectionFigure(figs, FigPalette.light), 150),
+        fig(topViewFigure(figs, FigPalette.light), 190),
+        if (viaStubFigure(figs, FigPalette.light) case final via?) fig(via, 170),
+      ],
       pw.Header(level: 1, text: 'Trace width per routing layer'),
       pw.TableHelper.fromTextArray(
         headers: ['Layer', 'Structure', 'Width', 'Width window (+/-10 %)', 'Delay'],
