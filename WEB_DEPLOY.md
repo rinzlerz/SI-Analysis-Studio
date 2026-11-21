@@ -36,9 +36,12 @@ Pick **one** of the two options.
 
 ### Option A – GitHub Pages (automatic builds)
 
-The workflow `.github/workflows/deploy-web.yml` runs on every push to `main`. It runs the tests, builds the web app with Flutter 3.29.0 and publishes it.
+The workflow file `deploy/deploy-web.yml` runs on every push to `main`. It runs the tests, builds the web app with Flutter 3.29.0 and publishes it. GitHub only runs workflows from `.github/workflows/`, so first copy it there once, in PowerShell in the project folder:
 
-This project already lives at **https://github.com/rinzlerz/SI-Analysis-Studio**, and the site is published at **https://rinzlerz.github.io/SI-Analysis-Studio/**. To set up a fresh copy elsewhere:
+```powershell
+New-Item -ItemType Directory -Force .github\workflows | Out-Null
+Copy-Item deploy\deploy-web.yml .github\workflows\deploy-web.yml
+```
 
 1. Create a free account at github.com, then a **new public repository**, for example `si-studio`. Do not add a README, so the repository starts empty.
 2. Upload the project. Use **either** GitHub Desktop (*File → Add local repository* → choose the project folder → *Publish repository*), **or** these commands:

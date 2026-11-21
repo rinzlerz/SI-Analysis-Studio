@@ -1,0 +1,995 @@
+# SI Studio — Product Requirements Document (PRD)
+
+**Product:** SI Studio  
+**Product Type:** Mobile Application (Android)  
+**Target Platform:** Android Smartphones and Tablets  
+**Target Users:** Digital Hardware Engineers, PCB Designers, Signal Integrity Engineers  
+**Development Environment:** Claude Code  
+**Document Version:** 1.1  
+**Primary Objective:** Quick Signal Integrity Analysis for PCB Layout Design
+
+---
+
+# 1. Product Overview
+
+## 1.1 Problem Statement
+
+Digital Hardware Engineers designing high-speed PCB layouts must consider numerous electrical and physical parameters to ensure Signal Integrity (SI).
+
+These parameters include:
+
+- Trace length
+- Trace width and spacing
+- Characteristic impedance
+- PCB stackup
+- Dielectric constant (Dk)
+- Dielectric height
+- Copper thickness
+- Termination resistance
+- Driver impedance
+- Receiver impedance
+- Signal voltage
+- Rise time and fall time
+- Data rate
+- Differential pair skew
+
+Different communication protocols have different electrical requirements, including USB 2.0, USB 3.0, PCI Express (PCIe), and SPI.
+
+Incorrect PCB routing or electrical configurations can introduce signal reflections, ringing, overshoot, undershoot, excessive propagation delay, impedance mismatch, and other SI-related problems.
+
+Traditional SI simulation tools can require extensive configuration, specialized knowledge, and detailed simulation models.
+
+There is an opportunity to create a lightweight mobile application that allows engineers to quickly evaluate PCB routing parameters and understand expected signal behavior.
+
+## 1.2 Proposed Solution
+
+SI Studio is an Android-based interactive Signal Integrity analysis application.
+
+The user selects a communication protocol, enters the electrical and PCB layout parameters, and clicks:
+
+**Generate Quick SI Analysis**
+
+The application calculates the expected signal behavior and generates corresponding waveform visualizations.
+
+The analysis should help engineers identify potential SI problems during PCB layout design.
+
+Core functionality:
+
+1. Protocol-specific parameter configuration.
+2. PCB stackup and routing configuration.
+3. Electrical and transmission-line calculations.
+4. Time-domain waveform generation.
+5. Signal Integrity metrics.
+6. Identification of potential SI problems.
+7. Engineering recommendations.
+8. Optional signal propagation animation.
+
+## 1.3 Product Vision
+
+Build a portable engineering companion that allows Digital Hardware Engineers to perform preliminary SI assessments directly from their Android devices.
+
+The application should prioritize:
+
+- Engineering accuracy.
+- Interactive waveform visualization.
+- Mobile usability.
+- Fast analysis.
+- Clear interpretation of simulation results.
+- Offline functionality.
+
+---
+
+# 2. Target Users
+
+## Primary User: Digital Hardware Engineer
+
+An engineer responsible for schematic design, PCB layout, and high-speed digital interfaces.
+
+Typical workflow:
+
+1. Design the schematic.
+2. Identify communication protocols.
+3. Design the PCB layout.
+4. Configure trace geometry and PCB stackup.
+5. Review impedance and termination requirements.
+6. Perform preliminary SI analysis.
+7. Adjust PCB routing if necessary.
+8. Finalize PCB layout.
+
+SI Studio should integrate into steps 5–7.
+
+---
+
+# 3. Core Application Workflow
+
+The application should follow this workflow:
+
+1. Open SI Studio.
+2. Select a communication protocol.
+3. Configure protocol-specific parameters.
+4. Configure PCB stackup and routing parameters.
+5. Configure transmitter and receiver characteristics.
+6. Click Generate Quick SI Analysis.
+7. Run the simulation.
+8. Display the resulting waveforms.
+9. Display SI metrics and potential violations.
+10. Provide engineering recommendations.
+
+The user should be able to modify parameters and regenerate the analysis without restarting the application.
+
+The application must support portrait and landscape orientations, particularly for waveform inspection.
+
+---
+
+# 4. Supported Communication Protocols
+
+## 4.1 USB 2.0
+
+Support USB 2.0 High-Speed and Full-Speed operating modes.
+
+Parameters:
+
+| Parameter | Description |
+|---|---|
+| Speed Mode | Full-Speed / High-Speed |
+| Data Rate | 12 Mbps / 480 Mbps |
+| Signaling | Differential |
+| Differential Impedance | Target 90 Ω |
+| Trace Length | PCB routing length |
+| Trace Width | Individual trace width |
+| Trace Spacing | Differential pair spacing |
+| Rise Time | Signal transition time |
+| Fall Time | Signal transition time |
+| Driver Impedance | Transmitter output impedance |
+| Receiver Load | Receiver electrical loading |
+| PCB Dielectric Constant | Dk |
+| Dielectric Height | Distance to reference plane |
+| Copper Thickness | PCB copper thickness |
+
+Expected analysis:
+
+- Differential waveform.
+- Differential impedance estimation.
+- Propagation delay.
+- Differential pair skew.
+- Reflection analysis.
+- Overshoot and undershoot.
+- Eye diagram where supported by the simulation model.
+
+## 4.2 USB 3.0
+
+Support USB 3.0 SuperSpeed.
+
+Parameters:
+
+- Data rate: 5 Gbps.
+- Differential impedance: Target 90 Ω.
+- Trace length.
+- Trace width.
+- Trace spacing.
+- Rise time.
+- Driver and receiver characteristics.
+- PCB dielectric constant.
+- Dielectric height.
+- Copper thickness.
+- Differential skew.
+
+Expected analysis:
+
+- Differential waveform.
+- Propagation delay.
+- Insertion loss estimation.
+- Return loss estimation.
+- Reflection analysis.
+- Differential pair skew.
+- Eye diagram.
+- Signal degradation visualization.
+
+## 4.3 PCI Express (PCIe)
+
+Support configurable PCIe generations:
+
+- PCIe Gen 1
+- PCIe Gen 2
+- PCIe Gen 3
+- PCIe Gen 4
+- PCIe Gen 5
+
+Parameters:
+
+- PCIe generation.
+- Lane configuration: x1, x2, x4, x8, x16.
+- Data rate.
+- Differential impedance: Target 85 Ω.
+- Trace length.
+- Trace width.
+- Trace spacing.
+- Differential skew.
+- PCB Dk.
+- Dielectric height.
+- Copper thickness.
+- Transmitter model.
+- Receiver model.
+
+Expected analysis:
+
+- Differential waveform.
+- Insertion loss estimation.
+- Return loss estimation.
+- Propagation delay.
+- Differential skew.
+- Eye diagram.
+- Jitter estimation.
+- Signal degradation.
+
+Each PCIe generation must use generation-specific signaling characteristics.
+
+## 4.4 SPI
+
+Support SPI communication with configurable clock frequencies.
+
+Parameters:
+
+- Clock frequency.
+- Clock mode: Mode 0, 1, 2, 3.
+- Signal voltage: 1.8 V / 3.3 V / Custom.
+- Trace length.
+- Trace width.
+- Rise time.
+- Fall time.
+- Driver impedance.
+- Termination resistance.
+- Receiver capacitance.
+- PCB Dk.
+- Dielectric height.
+- Copper thickness.
+
+Expected analysis:
+
+- Clock waveform.
+- MOSI waveform.
+- MISO waveform.
+- CS waveform.
+- Propagation delay.
+- Reflection analysis.
+- Overshoot and undershoot.
+- Ringing.
+- Setup and hold timing estimation.
+
+---
+
+# 5. PCB Stackup Configuration
+
+PCB stackup must be configurable independently of the selected protocol.
+
+## 5.1 Required Parameters
+
+- PCB layer count.
+- Signal layer.
+- Reference plane.
+- Copper thickness.
+- Dielectric thickness.
+- Dielectric constant (Dk).
+- Dissipation factor (Df).
+- Trace width.
+- Trace spacing.
+
+## 5.2 Stackup Visualization
+
+Provide a graphical representation of the PCB stackup.
+
+The user should be able to identify:
+
+- Signal layers.
+- Ground planes.
+- Power planes.
+- Dielectric materials.
+- Copper thickness.
+- Distance between layers.
+
+The visualization should update when parameters change.
+
+The initial version should use a simplified stackup editor suitable for mobile screens.
+
+## 5.3 Impedance Calculation
+
+Support preliminary calculations for:
+
+- Microstrip.
+- Stripline.
+- Differential microstrip.
+- Differential stripline.
+
+Display:
+
+- Calculated single-ended impedance.
+- Calculated differential impedance.
+- Target impedance.
+- Impedance deviation.
+
+Clearly identify the calculation method and assumptions.
+
+---
+
+# 6. Signal Integrity Simulation Engine
+
+This is the most important component of SI Studio.
+
+The waveform must be generated from actual electrical parameters entered by the user.
+
+It must not be a static waveform or decorative visualization.
+
+## 6.1 Simulation Inputs
+
+- Protocol configuration.
+- Data rate or clock frequency.
+- Signal voltage.
+- Rise time.
+- Fall time.
+- Trace length.
+- Trace width.
+- Trace spacing.
+- Characteristic impedance.
+- Driver impedance.
+- Receiver impedance.
+- Termination resistance.
+- PCB dielectric constant.
+- Dielectric thickness.
+- Copper thickness.
+- Differential skew.
+- Receiver capacitance.
+
+## 6.2 Required Electrical Models
+
+### A. Transmission-Line Model
+
+Calculate:
+
+- Characteristic impedance.
+- Propagation velocity.
+- Propagation delay.
+- Electrical length.
+- One-way and round-trip delay.
+
+### B. Reflection Model
+
+Use the reflection coefficient:
+
+Γ = (ZL - Z0) / (ZL + Z0)
+
+Calculate reflection magnitude, timing, and multiple reflections where supported.
+
+### C. Termination Model
+
+Support:
+
+- No termination.
+- Series termination.
+- Parallel termination.
+- Source termination.
+- Load termination.
+
+Demonstrate how termination affects signal reflections and waveform quality.
+
+### D. Signal Loss Model
+
+Implement simplified frequency-dependent channel loss.
+
+Where sufficient parameters are available, account for:
+
+- Conductor loss.
+- Dielectric loss.
+- Frequency-dependent attenuation.
+
+### E. Differential Signal Model
+
+Support:
+
+- Positive signal.
+- Negative signal.
+- Differential voltage.
+- Common-mode voltage.
+- Differential skew.
+- Differential pair mismatch.
+
+Vdiff = Vpositive - Vnegative
+
+Vcommon = (Vpositive + Vnegative) / 2
+
+### F. Signal Edge Model
+
+Support configurable rise and fall times.
+
+The generated waveform should respond to changes in transition time and signal loading.
+
+---
+
+# 7. Waveform Visualization
+
+The waveform visualization is a primary feature.
+
+It must be optimized for mobile interaction.
+
+## 7.1 Waveform Types
+
+Depending on the protocol, support:
+
+1. Transmitter waveform.
+2. Receiver waveform.
+3. Differential waveform.
+4. Single-ended waveform.
+5. Incident and reflected waveform.
+6. Eye diagram.
+7. Optional signal propagation animation.
+
+## 7.2 Waveform Comparison
+
+Allow users to compare:
+
+- Ideal waveform.
+- Simulated transmitter waveform.
+- Simulated receiver waveform.
+
+The comparison should clearly demonstrate the impact of PCB routing and electrical parameters.
+
+## 7.3 Mobile Waveform Interactions
+
+The waveform viewer must support:
+
+- Pinch-to-zoom.
+- Horizontal pan.
+- Vertical scaling.
+- Cursor measurement.
+- Voltage measurement.
+- Time measurement.
+- Rise-time measurement.
+- Peak voltage measurement.
+- Overshoot and undershoot measurement.
+- Waveform visibility controls.
+- CSV export.
+
+The waveform viewer should support landscape orientation for detailed inspection.
+
+## 7.4 Eye Diagram
+
+Provide an eye diagram where the simulation model supports meaningful repeated-data analysis.
+
+Display:
+
+- Eye height.
+- Eye width.
+- Crossing percentage.
+- Jitter estimation.
+- Vertical noise margin.
+- Horizontal timing margin.
+
+Do not display fabricated eye metrics.
+
+## 7.5 Signal Animation (Optional)
+
+Provide an optional animation showing signal propagation along a PCB trace.
+
+Demonstrate:
+
+- Signal transmission from source to receiver.
+- Signal propagation delay.
+- Reflected signal returning from impedance discontinuities.
+- Signal settling behavior.
+
+The animation must be synchronized with calculated propagation and reflection timing.
+
+---
+
+# 8. Signal Integrity Analysis Results
+
+After simulation, display an analysis summary.
+
+## 8.1 Key Metrics
+
+| Metric | Description |
+|---|---|
+| Characteristic Impedance | Calculated transmission-line impedance |
+| Target Impedance | Protocol/configuration target |
+| Impedance Deviation | Difference from target |
+| Propagation Delay | Signal travel time |
+| Reflection Coefficient | Reflection magnitude |
+| Overshoot | Voltage above nominal high level |
+| Undershoot | Voltage below nominal low level |
+| Rise Time | Signal transition time |
+| Fall Time | Signal transition time |
+| Differential Skew | P/N propagation mismatch |
+| Insertion Loss | Estimated channel attenuation |
+| Return Loss | Estimated reflected signal level |
+
+Only show metrics applicable to the selected protocol and simulation model.
+
+## 8.2 Analysis Status
+
+Use three classifications:
+
+- Good: Within configured engineering limits.
+- Warning: Potential SI concern requiring investigation.
+- Critical: A configured electrical limit has been exceeded.
+
+Classifications must be based on explicit thresholds.
+
+## 8.3 Engineering Recommendations
+
+Provide recommendations based on actual analysis results.
+
+Examples:
+
+**Impedance Mismatch**
+
+Review trace width, dielectric thickness, dielectric constant, and reference-plane configuration.
+
+**Excessive Reflection**
+
+Review receiver impedance and termination configuration.
+
+**Differential Skew**
+
+Review differential pair routing and length matching.
+
+**Excessive Propagation Delay**
+
+Review trace length and timing budget.
+
+Recommendations must explain the electrical reason behind each finding.
+
+---
+
+# 9. Mobile Application UI/UX Requirements
+
+The application should look and feel like a professional engineering tool.
+
+Avoid a generic dashboard appearance.
+
+## 9.1 Navigation Structure
+
+Use a mobile-friendly bottom navigation bar.
+
+Navigation items:
+
+1. Home
+2. New Analysis
+3. History
+4. Settings
+
+PCB Stackup configuration should be accessible from New Analysis and Settings.
+
+## 9.2 Home Screen
+
+Display:
+
+- SI Studio branding.
+- New Analysis button.
+- Recently performed analyses.
+- Supported protocols.
+- Quick access to previous simulation results.
+
+## 9.3 New Analysis Screen
+
+Organize configuration into expandable sections or a guided workflow.
+
+**Section A — Protocol Selection**
+
+- USB 2.0
+- USB 3.0
+- PCIe
+- SPI
+
+**Section B — Protocol Configuration**
+
+Display parameters relevant to the selected protocol.
+
+**Section C — PCB Configuration**
+
+Display trace geometry and stackup configuration.
+
+**Section D — Driver and Receiver**
+
+Display transmitter and receiver characteristics.
+
+**Section E — Simulation Configuration**
+
+Allow users to configure:
+
+- Simulation duration.
+- Time resolution.
+- Number of data bits.
+- Data pattern.
+- Simulation mode.
+
+**Section F — Generate Analysis**
+
+Provide a prominent Generate Quick SI Analysis button.
+
+## 9.4 Analysis Results Screen
+
+The results screen should use a structured engineering layout.
+
+Top:
+- Protocol information.
+- Simulation configuration.
+- Overall analysis status.
+
+Middle:
+- Large waveform viewer.
+- Waveform selection.
+- Visibility controls.
+
+Bottom:
+- SI metrics.
+- Violations.
+- Engineering recommendations.
+
+Use collapsible sections to optimize screen space.
+
+## 9.5 Design Guidelines
+
+- Professional engineering-oriented UI.
+- Dark theme as the default.
+- High-contrast waveform visualization.
+- Clear parameter labels and engineering units.
+- Consistent spacing and typography.
+- Responsive layouts for phones and tablets.
+- Support portrait and landscape orientation.
+- Avoid unnecessary animations that affect performance.
+
+---
+
+# 10. Data Management
+
+The application should work offline.
+
+Users should be able to save and revisit analyses without requiring an internet connection.
+
+Required functionality:
+
+- Save analysis configuration.
+- Load previous analysis.
+- Duplicate analysis.
+- Rename analysis.
+- Delete analysis.
+- Export analysis report.
+
+Each analysis should retain:
+
+- Protocol.
+- Input parameters.
+- PCB configuration.
+- Simulation settings.
+- Generated waveform data or reproducible simulation configuration.
+- Analysis metrics.
+- Recommendations.
+- Simulation model version.
+
+---
+
+# 11. Export Functionality
+
+Support:
+
+### CSV
+
+Export simulated waveform samples.
+
+### PDF
+
+Generate an SI analysis report containing:
+
+- Project information.
+- Protocol configuration.
+- PCB parameters.
+- Waveform screenshots.
+- Electrical metrics.
+- Potential violations.
+- Engineering recommendations.
+- Simulation assumptions and limitations.
+
+### JSON
+
+Export complete analysis configuration and results.
+
+Use Android's native file-saving and sharing capabilities.
+
+---
+
+# 12. Technical Architecture
+
+The application must be developed as a native-feeling Android mobile application.
+
+## 12.1 Frontend
+
+Recommended technologies:
+
+- Flutter.
+- Dart.
+- Material 3 design system.
+- fl_chart or a custom Flutter CustomPainter-based waveform renderer.
+
+The waveform renderer should support efficient drawing of large datasets, zooming, panning, and interactive measurement.
+
+## 12.2 Simulation Engine
+
+Implement a modular, Dart-based simulation engine initially.
+
+Separate modules:
+
+- Transmission-line calculations.
+- Impedance calculations.
+- Reflection calculations.
+- Termination models.
+- Differential signal models.
+- Channel loss models.
+- Time-domain waveform generation.
+- SI metrics analysis.
+
+The simulation engine must operate independently from Flutter UI components.
+
+Use background isolates for computationally intensive simulations when needed to keep the interface responsive.
+
+## 12.3 Local Storage
+
+Recommended technologies:
+
+- SQLite using Drift or sqflite.
+- JSON serialization for analysis configurations.
+- Local file storage for exported reports.
+
+No cloud backend is required for the initial release.
+
+## 12.4 Android Deployment
+
+- Android-first development.
+- Build APK for testing.
+- Build Android App Bundle (AAB) for Play Store distribution.
+- Support modern Android devices.
+- Follow Android permission and storage requirements.
+- Provide offline functionality.
+
+## 12.5 Suggested Project Structure
+
+lib/
+  core/
+    constants/
+    utilities/
+    theme/
+  features/
+    home/
+    protocol_selection/
+    analysis_input/
+    pcb_stackup/
+    waveform/
+    analysis_results/
+    history/
+    settings/
+  simulation/
+    transmission_line/
+    impedance/
+    reflection/
+    termination/
+    differential/
+    channel_loss/
+    waveform_engine/
+    metrics/
+  data/
+    models/
+    repositories/
+    local_database/
+  shared/
+    widgets/
+
+The actual project structure may be adjusted based on the existing repository.
+
+---
+
+# 13. Non-Functional Requirements
+
+## Performance
+
+- Basic analysis should complete within a few seconds for typical configurations.
+- Waveform interaction must remain responsive.
+- Simulation calculations must not block the UI thread.
+- Support efficient waveform rendering on mobile devices.
+
+## Reliability
+
+- Validate all user inputs.
+- Prevent invalid electrical configurations.
+- Handle missing parameters.
+- Display meaningful calculation errors.
+- Avoid silently substituting arbitrary default values.
+
+## Maintainability
+
+- Keep protocol-specific configurations separate.
+- Keep mathematical models modular.
+- Document important electrical equations.
+- Make it easy to add future protocols.
+
+## Usability
+
+- Use engineering terminology.
+- Provide tooltips for unfamiliar parameters.
+- Provide reasonable protocol-specific defaults.
+- Allow advanced users to modify parameters.
+
+---
+
+# 14. Simulation Accuracy and Limitations
+
+SI Studio is intended to be a preliminary engineering analysis tool, not a replacement for professional SI simulation and PCB electromagnetic analysis software.
+
+The application must distinguish between:
+
+**Level 1 — Analytical Calculations**
+
+- Characteristic impedance estimation.
+- Propagation delay.
+- Reflection coefficients.
+- Basic termination analysis.
+
+**Level 2 — Behavioral Time-Domain Simulation**
+
+- Signal propagation.
+- Reflections.
+- Ringing.
+- Overshoot and undershoot.
+- Simplified channel attenuation.
+- Receiver waveform reconstruction.
+
+**Level 3 — Advanced SI Simulation (Future Development)**
+
+- IBIS-based driver and receiver models.
+- S-parameter-based channel simulation.
+- Frequency-dependent channel modeling.
+- Crosstalk analysis.
+- Via and connector discontinuity modeling.
+- Advanced eye and jitter analysis.
+- Protocol compliance analysis.
+
+The application must clearly indicate which modeling level was used for each result.
+
+Do not claim protocol compliance or guaranteed PCB performance from simplified models.
+
+---
+
+# 15. Development Roadmap
+
+## Phase 1 — Foundation and MVP
+
+Priority: Build a working Android SI analysis application.
+
+Deliverables:
+
+- Flutter application foundation.
+- Main application UI.
+- Protocol selection.
+- SPI parameter configuration.
+- USB 2.0 parameter configuration.
+- PCB stackup configuration.
+- Trace geometry configuration.
+- Characteristic impedance calculation.
+- Propagation delay calculation.
+- Reflection coefficient calculation.
+- Termination configuration.
+- Basic behavioral time-domain waveform simulation.
+- Ideal versus simulated waveform comparison.
+- SI metrics and engineering recommendations.
+- Local analysis history.
+
+Success criteria:
+
+A user can configure an SPI or USB 2.0 interface, enter PCB parameters, generate a simulation, and observe how changes in trace length, impedance, and termination affect the resulting waveform.
+
+## Phase 2 — Advanced Waveform Analysis
+
+Deliverables:
+
+- Differential waveform visualization.
+- USB 3.0 model.
+- PCIe model.
+- Eye diagram generation.
+- Frequency-dependent attenuation.
+- Differential skew analysis.
+- Improved channel modeling.
+- Signal propagation animation.
+
+## Phase 3 — Advanced Engineering Features
+
+Deliverables:
+
+- IBIS model import.
+- S-parameter import.
+- Crosstalk analysis.
+- Via discontinuity modeling.
+- Connector modeling.
+- Advanced eye analysis.
+- Protocol-specific compliance checks.
+- Advanced reporting.
+
+## Phase 4 — Workflow Integration
+
+Deliverables:
+
+- Reusable PCB stackup libraries.
+- Component and driver model libraries.
+- Comparison between multiple routing configurations.
+- Potential integration with PCB design tools.
+
+---
+
+# 16. Acceptance Criteria
+
+The initial application will be considered successful when:
+
+1. Users can select SPI or USB 2.0.
+2. The application displays protocol-specific parameters.
+3. Users can enter PCB stackup and trace parameters.
+4. Users can configure driver, receiver, and termination characteristics.
+5. The application performs electrical calculations.
+6. The application generates time-domain waveforms based on the entered parameters.
+7. Changing trace length changes propagation delay.
+8. Changing impedance changes modeled reflection behavior.
+9. Changing termination changes the resulting waveform when electrically applicable.
+10. The application displays meaningful SI metrics.
+11. The application identifies potential SI concerns.
+12. The application provides engineering recommendations.
+13. Users can save and reload analysis configurations.
+14. Users can export waveform data.
+15. The application operates without an internet connection.
+16. The application runs on Android smartphones and tablets.
+
+---
+
+# 17. Instructions for Claude Code
+
+Claude Code should treat this document as the primary product specification.
+
+Before implementing the application:
+
+1. Inspect the existing repository.
+2. Identify the current framework and architecture.
+3. Review existing source files and reusable components.
+4. Preserve existing working functionality.
+5. Identify missing functionality against this PRD.
+6. Propose an implementation plan before making major architectural changes.
+
+Development principles:
+
+- Use Flutter and Dart.
+- Implement the application incrementally.
+- Prioritize a functioning simulation engine over visual decoration.
+- Separate mathematical calculations from waveform rendering.
+- Keep protocol-specific parameters modular.
+- Use documented engineering equations.
+- Add unit tests for electrical calculations.
+- Add test cases for known reflection and propagation-delay scenarios.
+- Ensure waveforms respond to actual simulation outputs.
+- Optimize waveform rendering for mobile devices.
+- Keep the application functional offline.
+- Do not generate arbitrary waveforms just to make the interface look interesting.
+- Do not fabricate SI metrics or claim unsupported compliance.
+- Clearly label approximations and assumptions.
+
+### Important Development Instruction
+
+Do not attempt to implement every protocol and every advanced SI feature simultaneously.
+
+Start with SPI and USB 2.0.
+
+First establish a reliable simulation engine that demonstrates the relationship between:
+
+- Trace length.
+- Characteristic impedance.
+- Termination resistance.
+- Rise time.
+- PCB stackup.
+- Signal reflection.
+- Propagation delay.
+
+Once these fundamentals are working, extend the architecture to USB 3.0 and PCIe.
+
+The final objective is to create a reliable, extensible Android SI analysis application that Digital Hardware Engineers can use as part of their everyday PCB design workflow.
